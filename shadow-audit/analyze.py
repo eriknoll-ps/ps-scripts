@@ -22,6 +22,7 @@ import time
 import os
 import csv
 from datetime import datetime
+import pandas as pd
 
 # ─────────────────────────────────────────────
 # CONFIGURATION
@@ -253,6 +254,40 @@ def extract_remote_diagnostics(shadow_state):
     return reported_enabled, desired_enabled
 
 # ─────────────────────────────────────────────
+# STEP 0: Load active TIG devices from OEM Historical Usage
+# ─────────────────────────────────────────────
+
+def load_active_tig_devices():
+    """
+    Load OEM Historical Usage.xlsx, filter to units with Cycle-to-date Data Usage > 0,
+    join with devices.csv on ICCID, and filter to Device Type == TIG.
+    Returns a DataFrame with columns: ICCID, DSN, Device Type, Cycle-to-date Data Usage
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    usage_file = os.path.join(script_dir, "OEM Historical Usage.xlsx")
+    devices_file = os.path.join(script_dir, "devices.csv")
+
+    # Load usage report - read ICCID as string to preserve all 20 digits
+    usage_df = pd.read_excel(usage_file, dtype={"ICCID": str})
+    usage_df["ICCID"] = usage_df["ICCID"].str.strip()
+
+    # Filter to units with data usage > 0
+    active_df = usage_df[usage_df["Cycle-to-date Data Usage"] > 0].copy()
+
+    # Load device map - skipinitialspace handles the ", " CSV formatting
+    devices_df = pd.read_csv(devices_file, skipinitialspace=True, dtype={"ICCID": str, "DSN": str})
+    devices_df["ICCID"] = devices_df["ICCID"].str.strip()
+    devices_df["Device Type"] = devices_df["Device Type"].str.strip()
+
+    # Join on ICCID
+    merged_df = active_df.merge(devices_df[["ICCID", "DSN", "Device Type"]], on="ICCID", how="inner")
+
+    # Filter to TIG only
+    tig_df = merged_df[merged_df["Device Type"] == "TIG"].copy()
+
+    return tig_df
+
+# ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
 
@@ -269,7 +304,21 @@ def main():
 
     results = []
 
-    # Step 1: Fetch Not Communicating vehicles
+    # Step 1: Load active TIG devices from OEM Historical Usage
+    print("=" * 60)
+    print("STEP 1: Load active TIG devices from OEM Historical Usage")
+    print("=" * 60)
+    try:
+        tig_df = load_active_tig_devices()
+        print(f"\nTIG devices with Cycle-to-date Data Usage > 0: {len(tig_df)}")
+        input("\nPress Enter to continue...")
+    except Exception as e:
+        print(f"\nERROR loading OEM Historical Usage data: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+
+    # Step 2: Fetch Not Communicating vehicles
     try:
         all_vehicles = fetch_not_communicating_vehicles()
     except requests.HTTPError as e:
@@ -283,14 +332,14 @@ def main():
         print("\nNo vehicles were retrieved. Check your token and network connection.")
         return
 
-    # Step 2: Filter for T521
+    # Step 3: Filter for T521
     t521_vehicles = filter_t521_vehicles(all_vehicles)
 
     if not t521_vehicles:
         print("\nNo T521 devices found in the Not Communicating list.")
         return
 
-    # Step 3: Fetch shadow state for each T521 device
+    # Step 4: Fetch shadow state for each T521 device
     print(f"\nFetching Shadow State for {len(t521_vehicles)} T521 devices...")
 
     for i, item in enumerate(t521_vehicles, 1):
