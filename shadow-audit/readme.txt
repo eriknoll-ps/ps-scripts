@@ -28,3 +28,24 @@ The script will:
 
 ## Output
 Console output shows total count of active TIG devices. No files are generated.
+The script will pause after displaying the count and wait for user input (press Enter to continue).
+
+## Example Output
+```
+============================================================
+SHADOW AUDIT: TIG Devices with Active Data Usage
+============================================================
+
+TIG devices with Cycle-to-date Data Usage > 0: 170424
+
+Press Enter to continue...
+```
+
+## Troubleshooting
+
+**Error: Missing file**
+- Ensure both OEM Historical Usage.xlsx and devices.csv are in the shadow-audit/ directory
+- Check file names match exactly (case-sensitive on Linux/Mac)
+
+**Error: No module named pandas/openpyxl**
+- Run: pip install pandas openpyxl
