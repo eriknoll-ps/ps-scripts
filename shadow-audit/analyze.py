@@ -102,27 +102,38 @@ def count_not_communicating_with_data(tig_df, not_comm_df):
 
 def main():
     """
-    Load OEM Historical Usage, filter to active TIG devices, report count, and pause for user input.
+    Load OEM Historical Usage, filter to active TIG devices, analyze Not Communicating status.
     """
-    print("=" * SEPARATOR_WIDTH)
-    print("SHADOW AUDIT: TIG Devices with Active Data Usage")
-    print("=" * SEPARATOR_WIDTH)
+    print("=" * 60)
+    print("SHADOW AUDIT: Not Communicating Vehicles with Active Data")
+    print("=" * 60)
 
     try:
+        # Load and filter TIG devices with active data
         tig_df = load_active_tig_devices()
-        count = len(tig_df)
+        tig_count = len(tig_df)
 
-        print(f"\nTIG devices with Cycle-to-date Data Usage > 0: {count}")
+        print(f"\nTIG devices with Cycle-to-date Data Usage > 0: {tig_count:,}")
+
+        # Load Not Communicating vehicles and find overlap
+        not_comm_df = load_not_communicating_vehicles()
+        not_comm_with_data = count_not_communicating_with_data(tig_df, not_comm_df)
+
+        print(f"Not Communicating vehicles with active cellular data: {not_comm_with_data:,}")
         input("\nPress Enter to continue...")
 
     except FileNotFoundError as e:
         print(f"\nERROR: Missing file - {e}")
-        print("  Ensure 'OEM Historical Usage.xlsx' and 'devices.csv' exist in shadow-audit/")
+        print("  Ensure 'OEM Historical Usage.xlsx', 'devices.csv', and 'vehicles.csv'")
+        print("  exist in shadow-audit/")
         return
     except Exception as e:
         print(f"\nERROR loading data: {e}")
+        import traceback
         traceback.print_exc()
-        return None
+        return
+
+    return None
 
 
 if __name__ == "__main__":
