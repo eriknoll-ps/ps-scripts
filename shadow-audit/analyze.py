@@ -31,6 +31,7 @@ The second metric reveals devices sending data but not communicating status to P
 """
 
 import csv
+import datetime
 import os
 import time
 import traceback
@@ -346,7 +347,7 @@ def count_not_communicating_with_data(tig_df, not_comm_df):
 
 def main():
     """
-    Load OEM data and vehicles, identify TIG devices with active data, find Not Communicating vehicles with data usage.
+    Load OEM data and vehicles, identify TIG devices with active data, fetch remote diagnostics settings.
     """
     print("=" * 60)
     print("SHADOW AUDIT: Not Communicating Vehicles with Active Data")
@@ -378,6 +379,26 @@ def main():
             if not_comm_with_data > 10:
                 print(f"  ... and {not_comm_with_data - 10} more")
 
+            # Fetch shadow state for matched devices
+            print("\nFetching remote diagnostics settings from PACCAR...")
+
+            # Load or prompt for auth token
+            token = load_paccar_token()
+            if not token:
+                token = prompt_for_paccar_token()
+                if not token:
+                    print("  Aborted: No auth token provided")
+                    return
+
+            # Fetch shadow state for all matched devices
+            results = fetch_shadow_state_for_devices(matched, token)
+
+            # Export to CSV
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file = export_shadow_state_results(results, timestamp)
+            if output_file:
+                print(f"\n  Results exported to: {output_file}")
+
         input("\nPress Enter to continue...")
 
     except FileNotFoundError as e:
@@ -386,9 +407,11 @@ def main():
         print("  exist in shadow-audit/")
         return
     except Exception as e:
-        print(f"\nERROR loading data: {e}")
+        print(f"\nERROR: {e}")
         traceback.print_exc()
         return
+
+    return None
 
 
 if __name__ == "__main__":
