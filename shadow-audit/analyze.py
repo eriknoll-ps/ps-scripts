@@ -17,7 +17,11 @@ SETUP:
 """
 
 import os
+import traceback
 import pandas as pd
+
+# Constants
+SEPARATOR_WIDTH = 60
 
 # ─────────────────────────────────────────────
 # STEP 0: Load active TIG devices from OEM Historical Usage
@@ -59,11 +63,11 @@ def load_active_tig_devices():
 
 def main():
     """
-    Load OEM Historical Usage, filter to active TIG devices, report count.
+    Load OEM Historical Usage, filter to active TIG devices, report count, and pause for user input.
     """
-    print("=" * 60)
+    print("=" * SEPARATOR_WIDTH)
     print("SHADOW AUDIT: TIG Devices with Active Data Usage")
-    print("=" * 60)
+    print("=" * SEPARATOR_WIDTH)
 
     try:
         tig_df = load_active_tig_devices()
@@ -78,9 +82,8 @@ def main():
         return
     except Exception as e:
         print(f"\nERROR loading data: {e}")
-        import traceback
         traceback.print_exc()
-        return
+        return None
 
 
 if __name__ == "__main__":
