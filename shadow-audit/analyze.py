@@ -61,29 +61,29 @@ def load_active_tig_devices():
     print("  Loading OEM Historical Usage data...", end="", flush=True)
     usage_df = pd.read_excel(usage_file, dtype={"ICCID": str})
     usage_df["ICCID"] = usage_df["ICCID"].str.strip()
-    print(" ✓")
+    print(" [OK]")
 
     # Filter to units with data usage > 0
     print("  Filtering to active devices...", end="", flush=True)
     active_df = usage_df[usage_df["Cycle-to-date Data Usage"] > 0].copy()
-    print(" ✓")
+    print(" [OK]")
 
     # Load device map - skipinitialspace handles the ", " CSV formatting
     print("  Loading device registry...", end="", flush=True)
     devices_df = pd.read_csv(devices_file, skipinitialspace=True, dtype={"ICCID": str, "DSN": str})
     devices_df["ICCID"] = devices_df["ICCID"].str.strip()
     devices_df["Device Type"] = devices_df["Device Type"].str.strip()
-    print(" ✓")
+    print(" [OK]")
 
     # Join on ICCID
     print("  Merging on ICCID...", end="", flush=True)
     merged_df = active_df.merge(devices_df[["ICCID", "DSN", "Device Type"]], on="ICCID", how="inner")
-    print(" ✓")
+    print(" [OK]")
 
     # Filter to TIG only
     print("  Filtering to TIG devices...", end="", flush=True)
     tig_df = merged_df[merged_df["Device Type"] == "TIG"].copy()
-    print(" ✓")
+    print(" [OK]")
 
     return tig_df
 
@@ -99,12 +99,12 @@ def load_not_communicating_vehicles():
     print("  Loading vehicle status data...", end="", flush=True)
     vehicles_df = pd.read_csv(vehicles_file, dtype={"DSN": str})
     vehicles_df["DSN"] = vehicles_df["DSN"].str.strip()
-    print(" ✓")
+    print(" [OK]")
 
     # Filter to Not Communicating status (case-insensitive)
     print("  Filtering to Not Communicating vehicles...", end="", flush=True)
     not_comm_df = vehicles_df[vehicles_df["Recommendation"].str.upper() == "NOT COMMUNICATING"].copy()
-    print(" ✓")
+    print(" [OK]")
 
     return not_comm_df
 
@@ -155,7 +155,7 @@ def main():
         not_comm_df = load_not_communicating_vehicles()
         print("  Joining datasets...", end="", flush=True)
         not_comm_with_data = count_not_communicating_with_data(tig_df, not_comm_df)
-        print(" ✓")
+        print(" [OK]")
 
         print(f"Not Communicating vehicles with active cellular data: {not_comm_with_data:,}")
         input("\nPress Enter to continue...")
