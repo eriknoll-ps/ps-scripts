@@ -16,33 +16,8 @@ SETUP:
   4. Set it as the AUTH_TOKEN constant below, or pass it via environment variable
 """
 
-import requests
-import json
-import time
 import os
-import csv
-from datetime import datetime
 import pandas as pd
-
-# ─────────────────────────────────────────────
-# CONFIGURATION
-# ─────────────────────────────────────────────
-
-# Option 1: Paste your token directly here (from browser localStorage > pnet.portal.encodedToken)
-AUTH_TOKEN = os.environ.get("PACCAR_AUTH_TOKEN", "eyJpc3NCeSI6IlBlb3BsZU5ldCIsImlzc0F0IjoxNzc0MzU4NzAzNTA0LCJhcHAiOiJQYWNjYXJQb3J0YWwiLCJyZWFsbSI6Ik9FTSIsInVpZCI6ImIyOWM5ZWQ2LWQ5ZTEtNGMyOS1iMmU5LWJhOWJlYjk0ZGMxNCIsInVzZXJOYW1lIjoiZXJpay5ub2xsQHBsYXRmb3Jtc2NpZW5jZS5jb20iLCJmaXJzdE5hbWUiOiJQQUNDQVIiLCJtaWRkbGVOYW1lIjoiIiwibGFzdE5hbWUiOiJTb2x1dGlvbnMgU3VwcG9ydCIsImdyYW50IjpudWxsLCJvcmdJZCI6InBlb3BsZW5ldCIsIm9yZ1R5cGUiOiJBZG1pbmlzdHJhdGl2ZSIsImFjY2VzcyI6IjFmMWNlOTQ1LWQzN2MtNDlhNS04YWFkLTlmM2I2MTFiNjIzZiIsImFjY2Vzc0V4cCI6MTc3NDM2MjMwMzUwNCwicmVmcmVzaCI6IjA1YmMwNGFhLWI1OTYtNDZiNy05YWY2LTk5OTlkZDU2YjI5ZiIsInJlZnJlc2hFeHAiOjE3NzQ0NDUxMDM1MDQsInRva2VuVHlwZSI6IkJlYXJlciIsInNpZ25hdHVyZSI6ImRjMzc5ODdkZjdmNTFkNWUxYzMzMTEyYWI3Njk5NDFmMGEyZmE3MGE4MWUyZGU5NDkyZDdkMWFkNDhiMzgxZWEiLCJ1c2VyTWV0YURhdGEiOnsib2VtS2V5cyI6WyJwYWNjYXIiXSwibG9jYWxlIjoiZW4tVVMifSwic2VydmVyVGltZSI6MTc3NDM1ODcwMzUwNH0=")
-
-# Option 2: Set environment variable:  export PACCAR_AUTH_TOKEN="your_token_here"
-
-BASE_URL = "https://security-gateway-rp.platform.fleethealth.io"
-
-T521_DSN_MIN = 20_000_000
-T521_DSN_MAX = 30_000_000
-
-PAGE_SIZE = 100          # Max page size for vehicle list requests
-REQUEST_DELAY = 0.25     # Seconds to wait between shadow state requests (be polite to the API)
-MAX_RETRIES = 5          # Max retries for transient (5xx) errors
-RETRY_BACKOFF = 2        # Exponential backoff multiplier (2, 4, 8, 16, 32 seconds)
-OUTPUT_CSV = f"t521_remote_diagnostics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 
 # ─────────────────────────────────────────────
 # HEADERS
