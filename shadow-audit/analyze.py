@@ -158,6 +158,16 @@ def main():
         print(" [OK]")
 
         print(f"Not Communicating vehicles with active cellular data: {not_comm_with_data:,}")
+
+        # Show first 10 DSNs of Not Communicating vehicles with active data
+        if not_comm_with_data > 0:
+            matched = not_comm_df.merge(tig_df[["DSN"]], on="DSN", how="inner")
+            print("\nFirst 10 DSNs:")
+            for i, dsn in enumerate(matched["DSN"].head(10), 1):
+                print(f"  {i}. {dsn}")
+            if not_comm_with_data > 10:
+                print(f"  ... and {not_comm_with_data - 10} more")
+
         input("\nPress Enter to continue...")
 
     except FileNotFoundError as e:
