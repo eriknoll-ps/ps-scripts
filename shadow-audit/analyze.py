@@ -31,6 +31,7 @@ The second metric reveals devices sending data but not communicating status to P
 """
 
 import os
+import time
 import traceback
 import warnings
 import requests
@@ -107,6 +108,81 @@ def refresh_paccar_token(current_token: str) -> str:
         print(f"  Warning: Token refresh failed: {e}")
 
     return None
+
+
+# ─────────────────────────────────────────────
+# PACCAR API Helper Functions
+# ─────────────────────────────────────────────
+
+def get_headers(token: str) -> dict:
+    """Build API headers with auth token."""
+    return {
+        "X-Auth-Token": token,
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+    }
+
+
+def fetch_shadow_state(dsn: str, token: str, max_retries: int = 5) -> dict:
+    """
+    Fetch shadow state for a device from PACCAR API.
+    Returns JSON response or None on failure.
+    """
+    url = f"https://security-gateway-rp.platform.fleethealth.io/device-config/device-config/{dsn}"
+
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, headers=get_headers(token), timeout=10)
+
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 401:
+                # Token expired, attempt refresh
+                new_token = refresh_paccar_token(token)
+                if new_token:
+                    # Retry with new token
+                    return fetch_shadow_state(dsn, new_token, max_retries=1)
+                return None
+            elif response.status_code == 404:
+                # Device not found
+                return None
+            elif response.status_code >= 500:
+                # Server error, retry with backoff
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** (attempt + 1)
+                    time.sleep(wait_time)
+                    continue
+            else:
+                return None
+
+        except requests.RequestException as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)
+                time.sleep(wait_time)
+                continue
+            return None
+
+    return None
+
+
+def extract_remote_diagnostics(shadow_state: dict) -> tuple:
+    """
+    Extract remote diagnostics enabled status from shadow state.
+    Returns (reported_enabled, desired_enabled) - each is True/False/None
+    """
+    if not shadow_state:
+        return None, None
+
+    try:
+        reported = shadow_state.get("reported", {}) or {}
+        desired = shadow_state.get("desired", {}) or {}
+
+        reported_enabled = reported.get("remoteDiagnostics", {}).get("enabled")
+        desired_enabled = desired.get("remoteDiagnostics", {}).get("enabled")
+
+        return reported_enabled, desired_enabled
+    except (KeyError, TypeError, AttributeError):
+        return None, None
 
 
 # Constants
