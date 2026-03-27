@@ -58,22 +58,32 @@ def load_active_tig_devices():
     devices_file = os.path.join(script_dir, "devices.csv")
 
     # Load usage report - read ICCID as string to preserve all 20 digits
+    print("  Loading OEM Historical Usage data...", end="", flush=True)
     usage_df = pd.read_excel(usage_file, dtype={"ICCID": str})
     usage_df["ICCID"] = usage_df["ICCID"].str.strip()
+    print(" ✓")
 
     # Filter to units with data usage > 0
+    print("  Filtering to active devices...", end="", flush=True)
     active_df = usage_df[usage_df["Cycle-to-date Data Usage"] > 0].copy()
+    print(" ✓")
 
     # Load device map - skipinitialspace handles the ", " CSV formatting
+    print("  Loading device registry...", end="", flush=True)
     devices_df = pd.read_csv(devices_file, skipinitialspace=True, dtype={"ICCID": str, "DSN": str})
     devices_df["ICCID"] = devices_df["ICCID"].str.strip()
     devices_df["Device Type"] = devices_df["Device Type"].str.strip()
+    print(" ✓")
 
     # Join on ICCID
+    print("  Merging on ICCID...", end="", flush=True)
     merged_df = active_df.merge(devices_df[["ICCID", "DSN", "Device Type"]], on="ICCID", how="inner")
+    print(" ✓")
 
     # Filter to TIG only
+    print("  Filtering to TIG devices...", end="", flush=True)
     tig_df = merged_df[merged_df["Device Type"] == "TIG"].copy()
+    print(" ✓")
 
     return tig_df
 
@@ -86,11 +96,15 @@ def load_not_communicating_vehicles():
     vehicles_file = os.path.join(script_dir, "vehicles.csv")
 
     # Load vehicles - DSN is around column 34, Recommendation is column 8
+    print("  Loading vehicle status data...", end="", flush=True)
     vehicles_df = pd.read_csv(vehicles_file, dtype={"DSN": str})
     vehicles_df["DSN"] = vehicles_df["DSN"].str.strip()
+    print(" ✓")
 
     # Filter to Not Communicating status (case-insensitive)
+    print("  Filtering to Not Communicating vehicles...", end="", flush=True)
     not_comm_df = vehicles_df[vehicles_df["Recommendation"].str.upper() == "NOT COMMUNICATING"].copy()
+    print(" ✓")
 
     return not_comm_df
 
@@ -130,14 +144,18 @@ def main():
 
     try:
         # Load and filter TIG devices with active data
+        print("\nLoading TIG devices with active data usage...")
         tig_df = load_active_tig_devices()
         tig_count = len(tig_df)
 
         print(f"\nTIG devices with Cycle-to-date Data Usage > 0: {tig_count:,}")
 
         # Load Not Communicating vehicles and find overlap
+        print("\nAnalyzing Not Communicating vehicles...")
         not_comm_df = load_not_communicating_vehicles()
+        print("  Joining datasets...", end="", flush=True)
         not_comm_with_data = count_not_communicating_with_data(tig_df, not_comm_df)
+        print(" ✓")
 
         print(f"Not Communicating vehicles with active cellular data: {not_comm_with_data:,}")
         input("\nPress Enter to continue...")
