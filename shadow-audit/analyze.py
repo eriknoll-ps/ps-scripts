@@ -35,7 +35,7 @@ import os
 import time
 import traceback
 import warnings
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 import pandas as pd
 from tqdm import tqdm
@@ -234,7 +234,7 @@ def fetch_shadow_state_for_devices(matched_df: pd.DataFrame, token: str) -> list
             "dsn": dsn,
             "reported_enabled": reported_enabled,
             "desired_enabled": desired_enabled,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
         results.append(result)
 
