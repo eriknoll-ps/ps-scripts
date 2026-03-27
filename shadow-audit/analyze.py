@@ -102,7 +102,7 @@ def count_not_communicating_with_data(tig_df, not_comm_df):
 
 def main():
     """
-    Load OEM Historical Usage, filter to active TIG devices, analyze Not Communicating status.
+    Load OEM data and vehicles, identify TIG devices with active data, find Not Communicating vehicles with data usage.
     """
     print("=" * 60)
     print("SHADOW AUDIT: Not Communicating Vehicles with Active Data")
@@ -129,11 +129,8 @@ def main():
         return
     except Exception as e:
         print(f"\nERROR loading data: {e}")
-        import traceback
         traceback.print_exc()
         return
-
-    return None
 
 
 if __name__ == "__main__":
