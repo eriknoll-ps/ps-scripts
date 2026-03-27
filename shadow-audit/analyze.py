@@ -37,6 +37,8 @@ import pandas as pd
 
 # Suppress openpyxl stylesheet warning
 warnings.filterwarnings('ignore', message='Workbook contains no default style')
+# Suppress pandas mixed dtype warning
+warnings.filterwarnings('ignore', message='Columns.*have mixed types')
 
 # Constants
 SEPARATOR_WIDTH = 60
