@@ -267,9 +267,13 @@ def load_active_tig_devices():
     usage_file = os.path.join(script_dir, "OEM Historical Usage.xlsx")
     devices_file = os.path.join(script_dir, "devices.csv")
 
-    # Load usage report - read ICCID as string to preserve all 20 digits
+    # Load usage report - read only required columns (ICCID and data usage)
     print("  Loading OEM Historical Usage data...", end="", flush=True)
-    usage_df = pd.read_excel(usage_file, dtype={"ICCID": str})
+    usage_df = pd.read_excel(
+        usage_file,
+        usecols=["ICCID", "Cycle-to-date Data Usage"],
+        dtype={"ICCID": str}
+    )
     usage_df["ICCID"] = usage_df["ICCID"].str.strip()
     print(" [OK]")
 
