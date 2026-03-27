@@ -74,6 +74,28 @@ def load_not_communicating_vehicles():
 
     return not_comm_df
 
+def count_not_communicating_with_data(tig_df, not_comm_df):
+    """
+    Left join Not Communicating vehicles to TIG devices on DSN.
+    Count how many Not Communicating vehicles have active data usage.
+    Returns the count.
+    """
+    if not_comm_df.empty:
+        return 0
+
+    # Left join: Not Communicating vehicles joined to TIG data
+    merged = not_comm_df.merge(
+        tig_df[["DSN"]],
+        on="DSN",
+        how="left",
+        indicator=True
+    )
+
+    # Count matches (both sides, meaning in both datasets)
+    count = (merged["_merge"] == "both").sum()
+
+    return count
+
 # ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
