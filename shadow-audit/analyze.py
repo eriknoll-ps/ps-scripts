@@ -33,12 +33,81 @@ The second metric reveals devices sending data but not communicating status to P
 import os
 import traceback
 import warnings
+import requests
 import pandas as pd
 
 # Suppress openpyxl stylesheet warning
 warnings.filterwarnings('ignore', message='Workbook contains no default style')
 # Suppress pandas mixed dtype warning
 warnings.filterwarnings('ignore', message='Columns.*have mixed types')
+
+
+# ─────────────────────────────────────────────
+# PACCAR Auth Token Management
+# ─────────────────────────────────────────────
+
+def save_paccar_token(token: str) -> None:
+    """Save PACCAR bearer token to local cache file."""
+    try:
+        with open(".paccar_token", "w") as f:
+            f.write(token.strip())
+        os.chmod(".paccar_token", 0o600)
+        print("  Token saved to .paccar_token")
+    except (OSError, IOError) as e:
+        print(f"  Warning: Could not save PACCAR token: {e}")
+
+
+def load_paccar_token() -> str:
+    """Load saved PACCAR bearer token from cache file."""
+    try:
+        if os.path.exists(".paccar_token"):
+            with open(".paccar_token", "r") as f:
+                token = f.read().strip()
+                if token:
+                    return token
+    except (OSError, IOError) as e:
+        print(f"  Warning: Could not load PACCAR token: {e}")
+    return None
+
+
+def prompt_for_paccar_token() -> str:
+    """Prompt user to paste PACCAR auth token from browser."""
+    print("\n  PACCAR auth token required.")
+    print("  Get token from: Chrome > DevTools (F12) > Application > Local Storage > https://paccarsolutions.com")
+    print("  Find key: pnet.portal.encodedToken")
+    token = input("\n  Paste token (or press Enter to abort): ").strip()
+    if token:
+        save_paccar_token(token)
+        return token
+    return None
+
+
+def refresh_paccar_token(current_token: str) -> str:
+    """Attempt to refresh expired PACCAR bearer token."""
+    try:
+        url = "https://security-gateway-rp.platform.fleethealth.io/refreshToken"
+        headers = {
+            "Authorization": f"Bearer {current_token}",
+            "X-Auth-Token": current_token,
+            "X-OEM": "paccar",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        }
+        payload = {"encodedToken": current_token}
+
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            new_token = data.get("encodedToken") or data.get("token")
+            if new_token:
+                save_paccar_token(new_token)
+                print("  Token refreshed successfully")
+                return new_token
+    except Exception as e:
+        print(f"  Warning: Token refresh failed: {e}")
+
+    return None
+
 
 # Constants
 SEPARATOR_WIDTH = 60
