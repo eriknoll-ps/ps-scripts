@@ -1,19 +1,33 @@
 """
-PACCAR Solutions - T521 Not Communicating Device Remote Diagnostics Checker
+SHADOW AUDIT - Not Communicating Devices with Active Data Analysis
 
-This script:
-1. Fetches all vehicles with Recommendation Status = "Not Communicating"
-2. Filters for T521 devices (DSN between 20,000,000 and 30,000,000)
-3. For each T521 device, retrieves Shadow State and extracts:
-   - reported.remoteDiagnostics.enabled
-   - desired.remoteDiagnostics.enabled
+This script identifies vehicles marked as "Not Communicating" in PACCAR that
+actually have active cellular data usage, revealing potential monitoring issues.
+
+The script performs these steps:
+1. Load OEM Historical Usage data and filter to devices with data usage > 0
+2. Join with devices.csv on ICCID and filter to TIG device type
+3. Load vehicles.csv and filter to "Not Communicating" status
+4. Left join Not Communicating vehicles to TIG devices on DSN
+5. Count and display matches
 
 SETUP:
-- Copy your auth token from the browser:
-  1. Open PACCAR Solutions in Chrome
-  2. Open DevTools (F12) > Application > Local Storage > https://paccarsolutions.com
-  3. Find 'pnet.portal.encodedToken' and copy its value (without surrounding quotes)
-  4. Set it as the AUTH_TOKEN constant below, or pass it via environment variable
+- Ensure these files exist in the shadow-audit/ directory:
+  - OEM Historical Usage.xlsx
+  - devices.csv
+  - vehicles.csv (Not Communicating vehicles from PACCAR)
+- Install pandas: pip install pandas
+- Install openpyxl: pip install openpyxl
+
+USAGE:
+```bash
+python analyze.py
+```
+
+OUTPUT:
+- TIG devices with Cycle-to-date Data Usage > 0 (count)
+- Not Communicating vehicles with active cellular data (count)
+The second metric reveals devices sending data but not communicating status to PACCAR.
 """
 
 import os
