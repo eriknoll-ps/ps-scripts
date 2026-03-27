@@ -57,6 +57,23 @@ def load_active_tig_devices():
 
     return tig_df
 
+def load_not_communicating_vehicles():
+    """
+    Load vehicles.csv and filter to Not Communicating status.
+    Returns a DataFrame with columns: DSN, Vin, Recommendation
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    vehicles_file = os.path.join(script_dir, "vehicles.csv")
+
+    # Load vehicles - DSN is around column 34, Recommendation is column 8
+    vehicles_df = pd.read_csv(vehicles_file, dtype={"DSN": str})
+    vehicles_df["DSN"] = vehicles_df["DSN"].str.strip()
+
+    # Filter to Not Communicating status
+    not_comm_df = vehicles_df[vehicles_df["Recommendation"] == "Not Communicating"].copy()
+
+    return not_comm_df
+
 # ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
