@@ -31,7 +31,6 @@ The second metric reveals devices sending data but not communicating status to P
 """
 
 import csv
-import datetime
 import os
 import time
 import traceback
