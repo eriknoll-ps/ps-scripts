@@ -30,6 +30,7 @@ OUTPUT:
 The second metric reveals devices sending data but not communicating status to PACCAR.
 """
 
+import csv
 import os
 import time
 import traceback
@@ -185,13 +186,11 @@ def extract_remote_diagnostics(shadow_state: dict) -> tuple:
         return None, None
 
 
-def export_shadow_state_results(results: list, timestamp: str) -> str:
+def export_shadow_state_results(results: list, timestamp: str) -> str | None:
     """
     Export shadow state fetch results to CSV.
-    Returns the output filename.
+    Returns the output filename (str) or None if write fails.
     """
-    import csv
-
     output_file = f"shadow-audit-results-{timestamp}.csv"
 
     try:
@@ -211,8 +210,8 @@ def export_shadow_state_results(results: list, timestamp: str) -> str:
                 })
 
         return output_file
-    except IOError as e:
-        print(f"  ERROR: Could not write CSV file: {e}")
+    except (OSError, IOError) as e:
+        print(f"  Warning: Could not write CSV file: {e}")
         return None
 
 
