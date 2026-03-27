@@ -394,7 +394,7 @@ def main():
             results = fetch_shadow_state_for_devices(matched, token)
 
             # Export to CSV
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_file = export_shadow_state_results(results, timestamp)
             if output_file:
                 print(f"\n  Results exported to: {output_file}")
