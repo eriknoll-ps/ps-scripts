@@ -59,7 +59,7 @@ def load_active_tig_devices():
 
 def load_not_communicating_vehicles():
     """
-    Load vehicles.csv and filter to Not Communicating status.
+    Load vehicles.csv and filter to Recommendation == 'Not Communicating' (case-insensitive).
     Returns a DataFrame with columns: DSN, Vin, Recommendation
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -69,8 +69,8 @@ def load_not_communicating_vehicles():
     vehicles_df = pd.read_csv(vehicles_file, dtype={"DSN": str})
     vehicles_df["DSN"] = vehicles_df["DSN"].str.strip()
 
-    # Filter to Not Communicating status
-    not_comm_df = vehicles_df[vehicles_df["Recommendation"] == "Not Communicating"].copy()
+    # Filter to Not Communicating status (case-insensitive)
+    not_comm_df = vehicles_df[vehicles_df["Recommendation"].str.upper() == "NOT COMMUNICATING"].copy()
 
     return not_comm_df
 
