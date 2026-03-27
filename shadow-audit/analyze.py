@@ -32,7 +32,11 @@ The second metric reveals devices sending data but not communicating status to P
 
 import os
 import traceback
+import warnings
 import pandas as pd
+
+# Suppress openpyxl stylesheet warning
+warnings.filterwarnings('ignore', message='Workbook contains no default style')
 
 # Constants
 SEPARATOR_WIDTH = 60
