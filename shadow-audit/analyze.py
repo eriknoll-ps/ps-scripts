@@ -37,6 +37,7 @@ import traceback
 import warnings
 import requests
 import pandas as pd
+from tqdm import tqdm
 
 # Suppress openpyxl stylesheet warning
 warnings.filterwarnings('ignore', message='Workbook contains no default style')
@@ -213,6 +214,41 @@ def export_shadow_state_results(results: list, timestamp: str) -> str | None:
     except (OSError, IOError) as e:
         print(f"  Warning: Could not write CSV file: {e}")
         return None
+
+
+def fetch_shadow_state_for_devices(matched_df: pd.DataFrame, token: str) -> list:
+    """
+    Fetch shadow state for matched Not Communicating devices.
+    Returns list of results with DSN, remote diagnostics settings, and timestamp.
+    """
+    from datetime import datetime
+
+    results = []
+    successful = 0
+    failed = 0
+
+    for dsn in tqdm(matched_df["DSN"], desc="Fetching shadow state"):
+        shadow_state = fetch_shadow_state(dsn, token)
+        reported_enabled, desired_enabled = extract_remote_diagnostics(shadow_state)
+
+        result = {
+            "dsn": dsn,
+            "reported_enabled": reported_enabled,
+            "desired_enabled": desired_enabled,
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        results.append(result)
+
+        if shadow_state is not None:
+            successful += 1
+        else:
+            failed += 1
+
+    print(f"\n  Successfully fetched shadow state for {successful}/{len(matched_df)} devices")
+    if failed > 0:
+        print(f"  Failed to fetch {failed} devices (skipped)")
+
+    return results
 
 
 # Constants
