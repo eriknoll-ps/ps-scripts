@@ -35,6 +35,7 @@ import os
 import time
 import traceback
 import warnings
+from datetime import datetime
 import requests
 import pandas as pd
 from tqdm import tqdm
@@ -221,8 +222,6 @@ def fetch_shadow_state_for_devices(matched_df: pd.DataFrame, token: str) -> list
     Fetch shadow state for matched Not Communicating devices.
     Returns list of results with DSN, remote diagnostics settings, and timestamp.
     """
-    from datetime import datetime
-
     results = []
     successful = 0
     failed = 0
