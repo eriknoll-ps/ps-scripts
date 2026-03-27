@@ -185,6 +185,37 @@ def extract_remote_diagnostics(shadow_state: dict) -> tuple:
         return None, None
 
 
+def export_shadow_state_results(results: list, timestamp: str) -> str:
+    """
+    Export shadow state fetch results to CSV.
+    Returns the output filename.
+    """
+    import csv
+
+    output_file = f"shadow-audit-results-{timestamp}.csv"
+
+    try:
+        with open(output_file, "w", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=["DSN", "Reported Enabled", "Desired Enabled", "Fetch Timestamp"]
+            )
+            writer.writeheader()
+
+            for result in results:
+                writer.writerow({
+                    "DSN": result["dsn"],
+                    "Reported Enabled": result["reported_enabled"],
+                    "Desired Enabled": result["desired_enabled"],
+                    "Fetch Timestamp": result["timestamp"]
+                })
+
+        return output_file
+    except IOError as e:
+        print(f"  ERROR: Could not write CSV file: {e}")
+        return None
+
+
 # Constants
 SEPARATOR_WIDTH = 60
 
