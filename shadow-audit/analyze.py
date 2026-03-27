@@ -58,15 +58,26 @@ def load_active_tig_devices():
 # ─────────────────────────────────────────────
 
 def main():
-    # Load active TIG devices from OEM Historical Usage
+    """
+    Load OEM Historical Usage, filter to active TIG devices, report count.
+    """
     print("=" * 60)
-    print("Loading active TIG devices from OEM Historical Usage")
+    print("SHADOW AUDIT: TIG Devices with Active Data Usage")
     print("=" * 60)
+
     try:
         tig_df = load_active_tig_devices()
-        print(f"\nTIG devices with Cycle-to-date Data Usage > 0: {len(tig_df)}")
+        count = len(tig_df)
+
+        print(f"\nTIG devices with Cycle-to-date Data Usage > 0: {count}")
+        input("\nPress Enter to continue...")
+
+    except FileNotFoundError as e:
+        print(f"\nERROR: Missing file - {e}")
+        print("  Ensure 'OEM Historical Usage.xlsx' and 'devices.csv' exist in shadow-audit/")
+        return
     except Exception as e:
-        print(f"\nERROR loading OEM Historical Usage data: {e}")
+        print(f"\nERROR loading data: {e}")
         import traceback
         traceback.print_exc()
         return
