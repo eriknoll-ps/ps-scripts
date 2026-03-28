@@ -161,13 +161,16 @@ def prompt_for_platformscience_token() -> str:
 # PlatformScience API Helper Functions
 # ─────────────────────────────────────────────
 
-def enable_remote_diagnostics(dsn: str, app_device_id: str, token: str, max_retries: int = 5) -> tuple:
+def enable_remote_diagnostics(dsn: str, app_device_id: str, token: str, max_retries: int = 5) -> tuple[bool, str | None]:
     """
     Enable remote diagnostics for a device via Trimble API.
     Returns (success: bool, reason: str or None)
     success=True means API returned 201
     reason explains why if success=False
     """
+    if not dsn or not app_device_id or not token:
+        return False, "Missing required parameter"
+
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
@@ -212,26 +215,51 @@ def enable_remote_diagnostics(dsn: str, app_device_id: str, token: str, max_retr
     return False, "Max retries exceeded"
 
 
-def lookup_app_device_id(dsn: str, paccar_token: str) -> str | None:
+def lookup_app_device_id(dsn: str, paccar_token: str, max_retries: int = 5) -> str | None:
     """
     Lookup appDeviceId from DSN using PACCAR API.
     Returns appDeviceId (str) or None if lookup fails.
     """
+    if not dsn or not paccar_token:
+        return None
+
     url = f"https://security-gateway-rp.platform.fleethealth.io/vehicledevices/{dsn}"
     headers = {"X-Auth-Token": paccar_token}
 
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
 
-        if response.status_code == 200:
-            data = response.json()
-            app_device_id = data.get("provisioningInfo", {}).get("tpaasDevice", {}).get("appDeviceId")
-            if app_device_id:
-                return app_device_id
+            if response.status_code == 200:
+                data = response.json()
+                app_device_id = data.get("provisioningInfo", {}).get("tpaasDevice", {}).get("appDeviceId")
+                if app_device_id:
+                    return app_device_id
+                return None
+            elif response.status_code == 401:
+                # Token expired
+                return None
+            elif response.status_code == 404:
+                # Device not found
+                return None
+            elif response.status_code >= 500:
+                # Server error, retry with backoff
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** (attempt + 1)
+                    time.sleep(wait_time)
+                    continue
+                return None
+            else:
+                return None
 
-        return None
-    except requests.RequestException:
-        return None
+        except requests.RequestException as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)
+                time.sleep(wait_time)
+                continue
+            return None
+
+    return None
 
 
 def export_enable_results(results: list, timestamp: str) -> str | None:
@@ -242,6 +270,8 @@ def export_enable_results(results: list, timestamp: str) -> str | None:
     reports_dir = "reports"
     output_filename = f"shadow-audit-enable-{timestamp}.csv"
     output_file = os.path.join(reports_dir, output_filename)
+
+    os.makedirs(reports_dir, exist_ok=True)
 
     try:
         with open(output_file, "w", newline="") as f:
@@ -384,7 +414,9 @@ def lookup_device_ids(disabled_devices: list, paccar_token: str) -> list:
     devices_with_ids = []
 
     for device in tqdm(disabled_devices, desc="Looking up device IDs"):
-        dsn = device["dsn"]
+        dsn = device.get("dsn")
+        if not dsn:
+            continue
         app_device_id = lookup_app_device_id(dsn, paccar_token)
 
         if app_device_id:
@@ -439,6 +471,8 @@ def export_shadow_state_results(results: list, timestamp: str) -> str | None:
     reports_dir = "reports"
     output_filename = f"shadow-audit-results-{timestamp}.csv"
     output_file = os.path.join(reports_dir, output_filename)
+
+    os.makedirs(reports_dir, exist_ok=True)
 
     try:
         with open(output_file, "w", newline="") as f:
