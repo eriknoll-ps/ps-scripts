@@ -776,6 +776,29 @@ def count_not_communicating_with_data(tig_df, not_comm_df):
 # MAIN
 # ─────────────────────────────────────────────
 
+def load_previous_shadow_state_results(csv_file: str) -> list:
+    """
+    Load previously saved shadow state results from CSV file.
+    Returns list of result dicts or None if load fails.
+    """
+    try:
+        results = []
+        with open(csv_file, "r", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                results.append({
+                    "dsn": row["DSN"],
+                    "reported_enabled": row["Reported Enabled"] if row["Reported Enabled"] else None,
+                    "desired_enabled": row["Desired Enabled"] if row["Desired Enabled"] else None,
+                    "timestamp": row["Fetch Timestamp"]
+                })
+        print(f"  Loaded {len(results)} results from {csv_file}")
+        return results
+    except (OSError, IOError) as e:
+        print(f"  Warning: Could not load CSV file: {e}")
+        return None
+
+
 def main():
     """
     Load OEM data and vehicles, identify TIG devices with active data, fetch remote diagnostics settings.
@@ -785,6 +808,93 @@ def main():
     print("=" * 60)
 
     try:
+        # Ask user which step to start from
+        import glob as glob_module
+        recent_csvs = sorted(glob_module.glob("reports/shadow-audit-results-*.csv"), reverse=True)
+
+        if recent_csvs:
+            print("\nStartup Options:")
+            print("  1. Start from beginning (load data, fetch shadow state)")
+            print(f"  2. Load previous results from {recent_csvs[0].split('/')[-1]}")
+            choice = input("\nChoose option (1 or 2): ").strip()
+
+            if choice == "2":
+                results = load_previous_shadow_state_results(recent_csvs[0])
+                if results:
+                    print(f"\nLoaded {len(results)} devices from previous run")
+                    # Skip to vinDiscovery/enable step
+                    disabled_devices = get_disabled_devices(results)
+
+                    # [NEW] Send vinDiscovery commands to discover VINs (only for disabled devices)
+                    if disabled_devices:
+                        token = load_paccar_token()
+                        if not token:
+                            token = prompt_for_paccar_token()
+                        if not token:
+                            print("  Aborted: No auth token provided")
+                            return
+
+                        print(f"\nSending vinDiscovery commands to {len(disabled_devices)} devices with disabled remote diagnostics...")
+                        vin_results = send_vin_discovery_loop(disabled_devices, token)
+
+                        # Export vinDiscovery results
+                        vin_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        vin_output = export_vin_discovery_results(vin_results, vin_timestamp)
+                        if vin_output:
+                            print(f"  VinDiscovery results exported to: {vin_output}")
+
+                    if disabled_devices:
+                        enable_prompt = input(f"\nFound {len(disabled_devices)} devices with Reported Enabled = False\nEnable remote diagnostics for these devices? (Y/N): ").strip().upper()
+
+                        if enable_prompt == "Y":
+                            # Show filtered list
+                            print("\nDevices to enable:")
+                            for i, device in enumerate(disabled_devices[:10], 1):
+                                print(f"  {i}. {device['dsn']}")
+                            if len(disabled_devices) > 10:
+                                print(f"  ... and {len(disabled_devices) - 10} more")
+
+                            confirm = input(f"\nConfirm enable {len(disabled_devices)} devices? (Y/N): ").strip().upper()
+
+                            if confirm == "Y":
+                                # Get Trimble token
+                                trimble_token = load_platformscience_token()
+                                if not trimble_token:
+                                    trimble_token = prompt_for_platformscience_token()
+                                    if not trimble_token:
+                                        print("  Aborted: No Trimble token provided")
+                                    else:
+                                        # Lookup device IDs
+                                        print("\nLooking up appDeviceIds for disabled devices...")
+                                        devices_with_ids = lookup_device_ids(disabled_devices, token)
+
+                                        if devices_with_ids:
+                                            # Enable devices
+                                            enable_results = enable_devices_loop(devices_with_ids, trimble_token)
+
+                                            # Export enable results
+                                            enable_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                            enable_output = export_enable_results(enable_results, enable_timestamp)
+                                            if enable_output:
+                                                print(f"\n  Enable results exported to: {enable_output}")
+                                else:
+                                    # Lookup device IDs
+                                    print("\nLooking up appDeviceIds for disabled devices...")
+                                    devices_with_ids = lookup_device_ids(disabled_devices, token)
+
+                                    if devices_with_ids:
+                                        # Enable devices
+                                        enable_results = enable_devices_loop(devices_with_ids, trimble_token)
+
+                                        # Export enable results
+                                        enable_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                        enable_output = export_enable_results(enable_results, enable_timestamp)
+                                        if enable_output:
+                                            print(f"\n  Enable results exported to: {enable_output}")
+
+                    input("\nPress Enter to continue...")
+                    return
+
         # Load and filter TIG devices with active data
         print("\nLoading TIG devices with active data usage...")
         tig_df = load_active_tig_devices()
