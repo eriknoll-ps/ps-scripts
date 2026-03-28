@@ -436,10 +436,28 @@ def enable_devices_loop(devices_with_ids: list, trimble_token: str) -> list:
     results = []
     successful = 0
     failed = 0
+    skipped = 0
 
     for device in tqdm(devices_with_ids, desc="Enabling remote diagnostics"):
         dsn = device["dsn"]
         app_device_id = device["appDeviceId"]
+
+        # Prompt user before enabling each device
+        print(f"\n  Device: {dsn}")
+        print(f"  AppDeviceId: {app_device_id}")
+        proceed = input("  Proceed with this device? (Y/N): ").strip().upper()
+
+        if proceed != "Y":
+            result = {
+                "dsn": dsn,
+                "status": "Skipped",
+                "reason": "User skipped device",
+                "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+            }
+            results.append(result)
+            skipped += 1
+            continue
+
         success, reason = enable_remote_diagnostics(dsn, app_device_id, trimble_token)
 
         result = {
@@ -457,7 +475,9 @@ def enable_devices_loop(devices_with_ids: list, trimble_token: str) -> list:
 
     print(f"\n  Successfully enabled {successful}/{len(devices_with_ids)} devices")
     if failed > 0:
-        print(f"  Failed to enable {failed} devices (skipped)")
+        print(f"  Failed to enable {failed} devices")
+    if skipped > 0:
+        print(f"  Skipped {skipped} devices (user choice)")
 
     return results
 
