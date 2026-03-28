@@ -259,10 +259,10 @@ def enable_remote_diagnostics(dsn: str, app_device_id: str, token: str, max_retr
     return False, "Max retries exceeded"
 
 
-def lookup_app_device_id(dsn: str, paccar_token: str, max_retries: int = 5) -> str | None:
+def lookup_app_device_id(dsn: str, paccar_token: str, max_retries: int = 5) -> str | tuple | None:
     """
     Lookup appDeviceId from DSN using PACCAR API.
-    Returns appDeviceId (str) or None if lookup fails.
+    Returns: appDeviceId (str), or (None, True) if 401 Unauthorized, or None if other error.
     """
     if not dsn or not paccar_token:
         return None
@@ -279,31 +279,22 @@ def lookup_app_device_id(dsn: str, paccar_token: str, max_retries: int = 5) -> s
                 app_device_id = data.get("provisioningInfo", {}).get("tpaasDevice", {}).get("appDeviceId")
                 if app_device_id:
                     return app_device_id
-                # Log if appDeviceId field is missing but 200 was returned
-                print(f"  DEBUG: {dsn} returned 200 but appDeviceId missing")
-                if not app_device_id:
-                    print(f"    Response keys: {list(data.keys())}")
-                    if "provisioningInfo" in data:
-                        print(f"    provisioningInfo keys: {list(data['provisioningInfo'].keys())}")
+                # appDeviceId field missing from response
                 return None
             elif response.status_code == 401:
-                # Token expired
-                print(f"  DEBUG: {dsn} got 401 Unauthorized")
-                return None
+                # Token expired - return tuple to signal to caller
+                return (None, True)  # (result, is_401)
             elif response.status_code == 404:
                 # Device not found
-                print(f"  DEBUG: {dsn} got 404 Not Found")
                 return None
             elif response.status_code >= 500:
                 # Server error, retry with backoff
-                print(f"  DEBUG: {dsn} got {response.status_code}, retrying...")
                 if attempt < max_retries - 1:
                     wait_time = 2 ** (attempt + 1)
                     time.sleep(wait_time)
                     continue
                 return None
             else:
-                print(f"  DEBUG: {dsn} got {response.status_code} error")
                 return None
 
         except requests.RequestException as e:
@@ -460,25 +451,38 @@ def get_disabled_devices(results: list) -> list:
     return disabled
 
 
-def lookup_device_ids(disabled_devices: list, paccar_token: str, max_workers: int = 5) -> list:
+def lookup_device_ids(disabled_devices: list, paccar_token: str, max_workers: int = 5) -> tuple[list, bool]:
     """
     Lookup appDeviceId for each disabled device using multithreading.
-    Returns list of dicts with dsn, appDeviceId (skips devices where lookup fails).
-    max_workers: Maximum number of concurrent threads (default 5)
+    Returns (list of dicts with dsn/appDeviceId, token_invalid: bool)
+    If token_invalid=True, caller should prompt for new token.
     """
     devices_with_ids = []
+    token_invalid = False
 
     def lookup_device(device):
         """Lookup appDeviceId for a single device."""
+        nonlocal token_invalid
         dsn = device.get("dsn")
         if not dsn:
             return None
 
-        app_device_id = lookup_app_device_id(dsn, paccar_token)
-        if app_device_id:
+        result = lookup_app_device_id(dsn, paccar_token)
+        if isinstance(result, tuple):
+            # Function returned (success, is_401) tuple
+            app_device_id, is_401 = result
+            if is_401:
+                token_invalid = True
+            if app_device_id:
+                return {
+                    "dsn": dsn,
+                    "appDeviceId": app_device_id
+                }
+        elif result:
+            # Function returned appDeviceId string directly
             return {
                 "dsn": dsn,
-                "appDeviceId": app_device_id
+                "appDeviceId": result
             }
         return None
 
@@ -494,8 +498,12 @@ def lookup_device_ids(disabled_devices: list, paccar_token: str, max_workers: in
                 if result:
                     devices_with_ids.append(result)
                 pbar.update(1)
+                # Stop early if token is invalid
+                if token_invalid:
+                    executor.shutdown(wait=False)
+                    break
 
-    return devices_with_ids
+    return devices_with_ids, token_invalid
 
 
 def enable_devices_loop(devices_with_ids: list, trimble_token: str) -> list:
@@ -976,7 +984,17 @@ def main():
                                     else:
                                         # Lookup device IDs
                                         print("\nLooking up appDeviceIds for disabled devices...")
-                                        devices_with_ids = lookup_device_ids(disabled_devices, token)
+                                        devices_with_ids, token_invalid = lookup_device_ids(disabled_devices, token)
+
+                                        if token_invalid:
+                                            print("  PACCAR token expired. Requesting new token...")
+                                            token = prompt_for_paccar_token()
+                                            if token:
+                                                print("  Retrying device lookup with new token...")
+                                                devices_with_ids, token_invalid = lookup_device_ids(disabled_devices, token)
+                                            else:
+                                                print("  Aborted: No PACCAR token provided")
+                                                devices_with_ids = []
 
                                         if devices_with_ids:
                                             # Enable devices
@@ -990,7 +1008,17 @@ def main():
                                 else:
                                     # Lookup device IDs
                                     print("\nLooking up appDeviceIds for disabled devices...")
-                                    devices_with_ids = lookup_device_ids(disabled_devices, token)
+                                    devices_with_ids, token_invalid = lookup_device_ids(disabled_devices, token)
+
+                                    if token_invalid:
+                                        print("  PACCAR token expired. Requesting new token...")
+                                        token = prompt_for_paccar_token()
+                                        if token:
+                                            print("  Retrying device lookup with new token...")
+                                            devices_with_ids, token_invalid = lookup_device_ids(disabled_devices, token)
+                                        else:
+                                            print("  Aborted: No PACCAR token provided")
+                                            devices_with_ids = []
 
                                     if devices_with_ids:
                                         # Enable devices
@@ -1079,7 +1107,17 @@ def main():
                     if confirm == "Y":
                         # Get PACCAR token for device ID lookups
                         print("\nLooking up device IDs...")
-                        devices_with_ids = lookup_device_ids(disabled_devices, token)
+                        devices_with_ids, token_invalid = lookup_device_ids(disabled_devices, token)
+
+                        if token_invalid:
+                            print("  PACCAR token expired. Requesting new token...")
+                            token = prompt_for_paccar_token()
+                            if token:
+                                print("  Retrying device lookup with new token...")
+                                devices_with_ids, token_invalid = lookup_device_ids(disabled_devices, token)
+                            else:
+                                print("  Aborted: No PACCAR token provided")
+                                devices_with_ids = []
 
                         if devices_with_ids:
                             found = len(devices_with_ids)
