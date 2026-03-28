@@ -567,7 +567,7 @@ def send_vin_discovery_loop(devices: list, token: str) -> list:
         result_dict = {
             "dsn": dsn,
             "success": "Success" if success else "Failed",
-            "result": result if not success else "",
+            "result": result if success else "",
             "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
         results.append(result_dict)
