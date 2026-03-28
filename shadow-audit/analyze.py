@@ -1051,16 +1051,6 @@ def main():
             # Optional: Enable remote diagnostics for devices with disabled settings
             disabled_devices = get_disabled_devices(results)
 
-            # [NEW] Send vinDiscovery commands to discover VINs (only for disabled devices)
-            if disabled_devices:
-                print(f"\nSending vinDiscovery commands to {len(disabled_devices)} devices with disabled remote diagnostics...")
-                vin_results = send_vin_discovery_loop(disabled_devices, token)
-
-                # Export vinDiscovery results
-                vin_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                vin_output = export_vin_discovery_results(vin_results, vin_timestamp)
-                if vin_output:
-                    print(f"  VinDiscovery results exported to: {vin_output}")
             if disabled_devices:
                 enable_prompt = input(f"\nFound {len(disabled_devices)} devices with Reported Enabled = False\nEnable remote diagnostics for these devices? (Y/N): ").strip().upper()
 
@@ -1114,6 +1104,16 @@ def main():
                                 print("  Aborted: No Trimble token provided")
                         else:
                             print("  No devices found during lookup")
+
+            # Send vinDiscovery commands to discover VINs (final step, after enabling)
+            print(f"\nSending vinDiscovery commands to {len(disabled_devices)} devices...")
+            vin_results = send_vin_discovery_loop(disabled_devices, token)
+
+            # Export vinDiscovery results
+            vin_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            vin_output = export_vin_discovery_results(vin_results, vin_timestamp)
+            if vin_output:
+                print(f"  VinDiscovery results exported to: {vin_output}")
 
         input("\nPress Enter to continue...")
 
