@@ -279,21 +279,31 @@ def lookup_app_device_id(dsn: str, paccar_token: str, max_retries: int = 5) -> s
                 app_device_id = data.get("provisioningInfo", {}).get("tpaasDevice", {}).get("appDeviceId")
                 if app_device_id:
                     return app_device_id
+                # Log if appDeviceId field is missing but 200 was returned
+                print(f"  DEBUG: {dsn} returned 200 but appDeviceId missing")
+                if not app_device_id:
+                    print(f"    Response keys: {list(data.keys())}")
+                    if "provisioningInfo" in data:
+                        print(f"    provisioningInfo keys: {list(data['provisioningInfo'].keys())}")
                 return None
             elif response.status_code == 401:
                 # Token expired
+                print(f"  DEBUG: {dsn} got 401 Unauthorized")
                 return None
             elif response.status_code == 404:
                 # Device not found
+                print(f"  DEBUG: {dsn} got 404 Not Found")
                 return None
             elif response.status_code >= 500:
                 # Server error, retry with backoff
+                print(f"  DEBUG: {dsn} got {response.status_code}, retrying...")
                 if attempt < max_retries - 1:
                     wait_time = 2 ** (attempt + 1)
                     time.sleep(wait_time)
                     continue
                 return None
             else:
+                print(f"  DEBUG: {dsn} got {response.status_code} error")
                 return None
 
         except requests.RequestException as e:
