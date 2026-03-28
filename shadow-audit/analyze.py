@@ -114,6 +114,50 @@ def refresh_paccar_token(current_token: str) -> str:
 
 
 # ─────────────────────────────────────────────
+# PlatformScience Auth Token Management
+# ─────────────────────────────────────────────
+
+def save_platformscience_token(token: str) -> None:
+    """Save PlatformScience API token to local cache file."""
+    try:
+        with open(".platformscience_token", "w") as f:
+            f.write(token.strip())
+        os.chmod(".platformscience_token", 0o600)
+        print("  Token saved to .platformscience_token")
+    except (OSError, IOError) as e:
+        print(f"  Warning: Could not save PlatformScience token: {e}")
+
+
+def load_platformscience_token() -> str:
+    """Load saved PlatformScience API token from cache file."""
+    try:
+        if os.path.exists(".platformscience_token"):
+            with open(".platformscience_token", "r") as f:
+                token = f.read().strip()
+                if token:
+                    return token
+    except (OSError, IOError) as e:
+        print(f"  Warning: Could not load PlatformScience token: {e}")
+    return None
+
+
+def prompt_for_platformscience_token() -> str:
+    """Prompt user to paste PlatformScience API token from browser."""
+    print("\n  PlatformScience API token required.")
+    print("  Get token from: Browser DevTools (F12) > Network tab")
+    print("  Find request to: cf-api.mc2.telematicsplatform.io")
+    print("  Copy Authorization header value (Bearer {token})")
+    token = input("\n  Paste token (or press Enter to abort): ").strip()
+    if token:
+        # Remove "Bearer " prefix if user included it
+        if token.startswith("Bearer "):
+            token = token[7:]
+        save_platformscience_token(token)
+        return token
+    return None
+
+
+# ─────────────────────────────────────────────
 # PACCAR API Helper Functions
 # ─────────────────────────────────────────────
 
