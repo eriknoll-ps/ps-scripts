@@ -584,6 +584,40 @@ def send_vin_discovery_loop(devices: list, token: str) -> list:
     return results
 
 
+def export_vin_discovery_results(results: list, timestamp: str) -> str | None:
+    """
+    Export vinDiscovery command results to CSV.
+    Returns the output filename (str) or None if write fails.
+    """
+    reports_dir = "reports"
+    output_filename = f"shadow-audit-vin-discovery-{timestamp}.csv"
+    output_file = os.path.join(reports_dir, output_filename)
+
+    try:
+        os.makedirs(reports_dir, exist_ok=True)
+
+        with open(output_file, "w", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=["DSN", "Command", "Success", "Response Result", "Timestamp"]
+            )
+            writer.writeheader()
+
+            for result in results:
+                writer.writerow({
+                    "DSN": result["dsn"],
+                    "Command": "vinDiscovery",
+                    "Success": result["success"],
+                    "Response Result": result["result"],
+                    "Timestamp": result["timestamp"]
+                })
+
+        return output_file
+    except (OSError, IOError) as e:
+        print(f"  Warning: Could not write CSV file: {e}")
+        return None
+
+
 def fetch_shadow_state_for_devices(matched_df: pd.DataFrame, token: str) -> list:
     """
     Fetch shadow state for matched Not Communicating devices.
