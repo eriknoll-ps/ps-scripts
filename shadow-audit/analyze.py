@@ -175,7 +175,7 @@ def enable_remote_diagnostics(dsn: str, token: str, max_retries: int = 5) -> tup
     }
     payload = {
         "deviceId": dsn,
-        "destinationTopic": '{"remoteDiagnostics":{"enabled": true}}',
+        "destinationTopic": {"remoteDiagnostics":{"enabled": true}},
         "payload": "[]",
         "payloadContentType": "application/json"
     }
