@@ -907,10 +907,11 @@ def main():
         if recent_csvs:
             print("\nStartup Options:")
             print("  1. Start from beginning (load data, fetch shadow state)")
-            print(f"  2. Load previous results from {recent_csvs[0].split('/')[-1]}")
-            choice = input("\nChoose option (1 or 2): ").strip()
+            print(f"  2. Load previous results + run vinDiscovery + enable")
+            print(f"  3. Skip to enable loop (load results, skip vinDiscovery)")
+            choice = input("\nChoose option (1, 2, or 3): ").strip()
 
-            if choice == "2":
+            if choice == "2" or choice == "3":
                 results = load_previous_shadow_state_results(recent_csvs[0])
                 if results:
                     print(f"\nLoaded {len(results)} devices from previous run")
@@ -918,8 +919,8 @@ def main():
                     disabled_devices = get_disabled_devices(results)
                     print(f"Found {len(disabled_devices)} devices with Reported Enabled = False")
 
-                    # [NEW] Send vinDiscovery commands to discover VINs (only for disabled devices)
-                    if disabled_devices:
+                    # [NEW] Send vinDiscovery commands to discover VINs (only for disabled devices) - skip if option 3
+                    if choice == "2" and disabled_devices:
                         token = load_paccar_token()
                         if not token:
                             token = prompt_for_paccar_token()
@@ -935,6 +936,8 @@ def main():
                         vin_output = export_vin_discovery_results(vin_results, vin_timestamp)
                         if vin_output:
                             print(f"  VinDiscovery results exported to: {vin_output}")
+                    elif choice == "3":
+                        print("\n(Skipping vinDiscovery - going straight to enable)")
 
                     if disabled_devices:
                         enable_prompt = input(f"\nFound {len(disabled_devices)} devices with Reported Enabled = False\nEnable remote diagnostics for these devices? (Y/N): ").strip().upper()
