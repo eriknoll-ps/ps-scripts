@@ -786,10 +786,23 @@ def load_previous_shadow_state_results(csv_file: str) -> list:
         with open(csv_file, "r", newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
+                # Convert string booleans to actual boolean values
+                reported_enabled = None
+                if row["Reported Enabled"].strip().lower() == "true":
+                    reported_enabled = True
+                elif row["Reported Enabled"].strip().lower() == "false":
+                    reported_enabled = False
+
+                desired_enabled = None
+                if row["Desired Enabled"].strip().lower() == "true":
+                    desired_enabled = True
+                elif row["Desired Enabled"].strip().lower() == "false":
+                    desired_enabled = False
+
                 results.append({
                     "dsn": row["DSN"],
-                    "reported_enabled": row["Reported Enabled"] if row["Reported Enabled"] else None,
-                    "desired_enabled": row["Desired Enabled"] if row["Desired Enabled"] else None,
+                    "reported_enabled": reported_enabled,
+                    "desired_enabled": desired_enabled,
                     "timestamp": row["Fetch Timestamp"]
                 })
         print(f"  Loaded {len(results)} results from {csv_file}")
@@ -824,6 +837,7 @@ def main():
                     print(f"\nLoaded {len(results)} devices from previous run")
                     # Skip to vinDiscovery/enable step
                     disabled_devices = get_disabled_devices(results)
+                    print(f"Found {len(disabled_devices)} devices with Reported Enabled = False")
 
                     # [NEW] Send vinDiscovery commands to discover VINs (only for disabled devices)
                     if disabled_devices:
