@@ -504,8 +504,10 @@ def send_vin_discovery_command(dsn: str, token: str, delay: float = 0.2) -> tupl
     Returns (success: bool, result: str)
     result contains response.result on success, error message on failure
     """
-    if not dsn or not token:
-        return False, "Missing required parameter"
+    if not dsn:
+        return False, "Missing DSN parameter"
+    if not token:
+        return False, "Missing token parameter"
 
     url = "https://security-gateway-rp.platform.fleethealth.io/transmit/command/synchronous"
     headers = {
@@ -538,14 +540,12 @@ def send_vin_discovery_command(dsn: str, token: str, delay: float = 0.2) -> tupl
         else:
             return False, f"{response.status_code} error"
 
-    except requests.RequestException as e:
+    except (requests.RequestException, ValueError) as e:
         return False, f"Network error: {str(e)}"
 
     finally:
         # Apply rate limit delay
         time.sleep(delay)
-
-    return False, "Unknown error"
 
 
 def fetch_shadow_state_for_devices(matched_df: pd.DataFrame, token: str) -> list:
