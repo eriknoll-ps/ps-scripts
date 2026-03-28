@@ -36,6 +36,7 @@ import time
 import traceback
 import warnings
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 import pandas as pd
 from tqdm import tqdm
@@ -568,34 +569,47 @@ def send_vin_discovery_command(dsn: str, token: str, delay: float = 0.2) -> tupl
         time.sleep(delay)
 
 
-def send_vin_discovery_loop(devices: list, token: str) -> list:
+def send_vin_discovery_loop(devices: list, token: str, max_workers: int = 5) -> list:
     """
-    Send vinDiscovery command to all devices.
+    Send vinDiscovery command to all devices using multithreading.
     Returns list of result dicts with DSN, success, result, and timestamp.
+    max_workers: Maximum number of concurrent threads (default 5)
     """
     results = []
     successful = 0
     failed = 0
 
-    for device in tqdm(devices, desc="Sending vinDiscovery commands"):
+    def send_device_command(device):
+        """Send command to a single device and return result dict."""
         dsn = device.get("dsn")
         if not dsn:
-            continue
+            return None
 
-        success, result = send_vin_discovery_command(dsn, token)
+        success, result = send_vin_discovery_command(dsn, token, delay=0.1)  # Reduced delay for concurrent requests
 
-        result_dict = {
+        return {
             "dsn": dsn,
             "success": "Success" if success else "Failed",
             "result": result if success else "",
             "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
-        results.append(result_dict)
 
-        if success:
-            successful += 1
-        else:
-            failed += 1
+    # Use ThreadPoolExecutor for concurrent requests
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        futures = {executor.submit(send_device_command, device): device for device in devices}
+
+        # Process results as they complete with progress bar
+        with tqdm(total=len(devices), desc="Sending vinDiscovery commands") as pbar:
+            for future in as_completed(futures):
+                result_dict = future.result()
+                if result_dict:
+                    results.append(result_dict)
+                    if result_dict["success"] == "Success":
+                        successful += 1
+                    else:
+                        failed += 1
+                pbar.update(1)
 
     print(f"\n  Successfully sent {successful}/{len(devices)} commands")
     if failed > 0:
