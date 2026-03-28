@@ -441,12 +441,15 @@ def cleanup_old_reports(max_reports: int = 25) -> None:
 
 def get_disabled_devices(results: list) -> list:
     """
-    Filter results to devices with reported_enabled == False.
-    Returns list of result dicts with disabled remote diagnostics.
+    Filter results to devices with reported_enabled == False AND desired_enabled != True.
+    Returns list of result dicts that meet both conditions.
     """
     disabled = []
     for result in results:
-        if result.get("reported_enabled") is False:
+        reported = result.get("reported_enabled")
+        desired = result.get("desired_enabled")
+        # Include if: reported is False AND desired is not True
+        if reported is False and desired is not True:
             disabled.append(result)
     return disabled
 
