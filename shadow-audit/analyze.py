@@ -919,14 +919,16 @@ def main():
                     disabled_devices = get_disabled_devices(results)
                     print(f"Found {len(disabled_devices)} devices with Reported Enabled = False")
 
+                    # Load PACCAR token (needed for both vinDiscovery and device ID lookup)
+                    token = load_paccar_token()
+                    if not token:
+                        token = prompt_for_paccar_token()
+                    if not token:
+                        print("  Aborted: No PACCAR auth token provided")
+                        return
+
                     # [NEW] Send vinDiscovery commands to discover VINs (only for disabled devices) - skip if option 3
                     if choice == "2" and disabled_devices:
-                        token = load_paccar_token()
-                        if not token:
-                            token = prompt_for_paccar_token()
-                        if not token:
-                            print("  Aborted: No auth token provided")
-                            return
 
                         print(f"\nSending vinDiscovery commands to {len(disabled_devices)} devices with disabled remote diagnostics...")
                         vin_results = send_vin_discovery_loop(disabled_devices, token)
