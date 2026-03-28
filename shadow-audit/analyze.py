@@ -548,6 +548,42 @@ def send_vin_discovery_command(dsn: str, token: str, delay: float = 0.2) -> tupl
         time.sleep(delay)
 
 
+def send_vin_discovery_loop(devices: list, token: str) -> list:
+    """
+    Send vinDiscovery command to all devices.
+    Returns list of result dicts with DSN, success, result, and timestamp.
+    """
+    results = []
+    successful = 0
+    failed = 0
+
+    for device in tqdm(devices, desc="Sending vinDiscovery commands"):
+        dsn = device.get("dsn")
+        if not dsn:
+            continue
+
+        success, result = send_vin_discovery_command(dsn, token)
+
+        result_dict = {
+            "dsn": dsn,
+            "success": "Success" if success else "Failed",
+            "result": result if not success else "",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
+        results.append(result_dict)
+
+        if success:
+            successful += 1
+        else:
+            failed += 1
+
+    print(f"\n  Successfully sent {successful}/{len(devices)} commands")
+    if failed > 0:
+        print(f"  Failed to send {failed} commands (skipped)")
+
+    return results
+
+
 def fetch_shadow_state_for_devices(matched_df: pd.DataFrame, token: str) -> list:
     """
     Fetch shadow state for matched Not Communicating devices.
