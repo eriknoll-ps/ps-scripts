@@ -192,9 +192,7 @@ def enable_remote_diagnostics(dsn: str, app_device_id: str, token: str, max_retr
             # Debug: Log the request details on first attempt
             if attempt == 0:
                 import json as json_module
-                # Uncomment next line to debug payload:
-                # print(f"DEBUG: Sending payload: {json_module.dumps(payload, indent=2)}")
-                pass
+                print(f"DEBUG: Sending payload: {json_module.dumps(payload, indent=2)}")
 
             response = requests.post(TRIMBLE_ENABLE_URL, json=payload, headers=headers, timeout=10)
 
@@ -207,15 +205,18 @@ def enable_remote_diagnostics(dsn: str, app_device_id: str, token: str, max_retr
             elif response.status_code == 400:
                 try:
                     error_data = response.json()
+                    print(f"DEBUG: 400 Response JSON: {error_data}")
                     # Try different error message fields
-                    error_detail = error_data.get("message") or error_data.get("error") or error_data.get("detail")
+                    error_detail = error_data.get("message") or error_data.get("error") or error_data.get("detail") or error_data.get("ErrorMessage") or error_data.get("ErrorCode")
                     if error_detail:
                         return False, f"400 Bad Request - {error_detail}"
                     else:
                         # Return the whole response for debugging
                         return False, f"400 Bad Request - {str(error_data)}"
-                except:
+                except Exception as e:
                     # Return response text if JSON parsing fails
+                    print(f"DEBUG: 400 Response text: {response.text}")
+                    print(f"DEBUG: JSON parse error: {e}")
                     return False, f"400 Bad Request - {response.text}"
             elif response.status_code >= 500:
                 # Server error, retry with backoff
