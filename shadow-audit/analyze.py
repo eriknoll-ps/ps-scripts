@@ -170,7 +170,7 @@ def enable_remote_diagnostics(dsn: str, app_device_id: str, token: str, max_retr
     reason explains why if success=False
     """
     if not dsn or not app_device_id or not token:
-        return False, "Missing required parameter"
+        return False, "Missing required parameter (DSN, AppDeviceId, or Token)"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -194,21 +194,48 @@ def enable_remote_diagnostics(dsn: str, app_device_id: str, token: str, max_retr
             if response.status_code == 201:
                 return True, None
             elif response.status_code == 401:
-                # Token expired
-                return False, "401 Unauthorized"
+                return False, "401 Unauthorized - Token expired or invalid"
+            elif response.status_code == 404:
+                return False, "404 Not Found - AppDeviceId may be invalid"
+            elif response.status_code == 400:
+                try:
+                    error_detail = response.json().get("message", "Bad request")
+                    return False, f"400 Bad Request - {error_detail}"
+                except:
+                    return False, "400 Bad Request - Check payload format"
             elif response.status_code >= 500:
                 # Server error, retry with backoff
                 if attempt < max_retries - 1:
                     wait_time = 2 ** (attempt + 1)
+                    print(f"    [Attempt {attempt + 1}/{max_retries}] Server error {response.status_code}, retrying in {wait_time}s...")
                     time.sleep(wait_time)
                     continue
-                return False, f"{response.status_code} Server error"
+                return False, f"{response.status_code} Server error (max retries exceeded)"
             else:
-                return False, f"{response.status_code} API error"
+                try:
+                    error_detail = response.json().get("message", "")
+                    return False, f"{response.status_code} API error - {error_detail}"
+                except:
+                    return False, f"{response.status_code} API error"
 
+        except requests.Timeout:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)
+                print(f"    [Attempt {attempt + 1}/{max_retries}] Request timeout, retrying in {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            return False, "Request timeout (10s) - Network slow or endpoint unresponsive"
+        except requests.ConnectionError as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)
+                print(f"    [Attempt {attempt + 1}/{max_retries}] Connection error, retrying in {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            return False, f"Connection error - {str(e)}"
         except requests.RequestException as e:
             if attempt < max_retries - 1:
                 wait_time = 2 ** (attempt + 1)
+                print(f"    [Attempt {attempt + 1}/{max_retries}] Request error, retrying in {wait_time}s...")
                 time.sleep(wait_time)
                 continue
             return False, f"Network error: {str(e)}"
@@ -460,6 +487,14 @@ def enable_devices_loop(devices_with_ids: list, trimble_token: str) -> list:
             continue
 
         success, reason = enable_remote_diagnostics(dsn, app_device_id, trimble_token)
+
+        # Show result with diagnostics
+        status_icon = "✓" if success else "✗"
+        print(f"    {status_icon} {dsn}: ", end="")
+        if success:
+            print("Enabled successfully")
+        else:
+            print(f"Failed - {reason}")
 
         result = {
             "dsn": dsn,
