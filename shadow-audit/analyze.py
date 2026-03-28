@@ -179,7 +179,7 @@ def enable_remote_diagnostics(dsn: str, app_device_id: str, token: str, max_retr
     payload = {
         "AppInstanceId": TRIMBLE_APP_INSTANCE_ID,
         "AppDeviceId": app_device_id,
-        "Action": "UpdateDeviceShadow",
+        "OutboundOverrideAction": "UpdateDeviceShadow",
         "OutboundMessage": {
             "remoteDiagnostics": {
                 "enabled": True
