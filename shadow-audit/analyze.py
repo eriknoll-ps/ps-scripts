@@ -514,37 +514,12 @@ def enable_devices_loop(devices_with_ids: list, trimble_token: str) -> list:
     results = []
     successful = 0
     failed = 0
-    skipped = 0
 
     for device in tqdm(devices_with_ids, desc="Enabling remote diagnostics"):
         dsn = device["dsn"]
         app_device_id = device["appDeviceId"]
 
-        # Prompt user before enabling each device
-        print(f"\n  Device: {dsn}")
-        print(f"  AppDeviceId: {app_device_id}")
-        proceed = input("  Proceed with this device? (Y/N): ").strip().upper()
-
-        if proceed != "Y":
-            result = {
-                "dsn": dsn,
-                "status": "Skipped",
-                "reason": "User skipped device",
-                "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-            }
-            results.append(result)
-            skipped += 1
-            continue
-
         success, reason = enable_remote_diagnostics(dsn, app_device_id, trimble_token)
-
-        # Show result with diagnostics
-        status_icon = "✓" if success else "✗"
-        print(f"    {status_icon} {dsn}: ", end="")
-        if success:
-            print("Enabled successfully")
-        else:
-            print(f"Failed - {reason}")
 
         result = {
             "dsn": dsn,
@@ -562,8 +537,6 @@ def enable_devices_loop(devices_with_ids: list, trimble_token: str) -> list:
     print(f"\n  Successfully enabled {successful}/{len(devices_with_ids)} devices")
     if failed > 0:
         print(f"  Failed to enable {failed} devices")
-    if skipped > 0:
-        print(f"  Skipped {skipped} devices (user choice)")
 
     return results
 
@@ -947,20 +920,6 @@ def main():
                         print("  Aborted: No PACCAR auth token provided")
                         return
 
-                    # [NEW] Send vinDiscovery commands to discover VINs (only for disabled devices) - skip if option 3
-                    if choice == "2" and disabled_devices:
-
-                        print(f"\nSending vinDiscovery commands to {len(disabled_devices)} devices with disabled remote diagnostics...")
-                        vin_results = send_vin_discovery_loop(disabled_devices, token)
-
-                        # Export vinDiscovery results
-                        vin_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        vin_output = export_vin_discovery_results(vin_results, vin_timestamp)
-                        if vin_output:
-                            print(f"  VinDiscovery results exported to: {vin_output}")
-                    elif choice == "3":
-                        print("\n(Skipping vinDiscovery - going straight to enable)")
-
                     if disabled_devices:
                         enable_prompt = input(f"\nFound {len(disabled_devices)} devices with Reported Enabled = False\nEnable remote diagnostics for these devices? (Y/N): ").strip().upper()
 
@@ -1029,6 +988,17 @@ def main():
                                         enable_output = export_enable_results(enable_results, enable_timestamp)
                                         if enable_output:
                                             print(f"\n  Enable results exported to: {enable_output}")
+
+                    # Send vinDiscovery commands to discover VINs (final step, after enabling)
+                    if disabled_devices:
+                        print(f"\nSending vinDiscovery commands to {len(disabled_devices)} devices...")
+                        vin_results = send_vin_discovery_loop(disabled_devices, token)
+
+                        # Export vinDiscovery results
+                        vin_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        vin_output = export_vin_discovery_results(vin_results, vin_timestamp)
+                        if vin_output:
+                            print(f"  VinDiscovery results exported to: {vin_output}")
 
                     input("\nPress Enter to continue...")
                     return
