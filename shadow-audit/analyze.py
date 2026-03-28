@@ -161,45 +161,44 @@ def prompt_for_platformscience_token() -> str:
 # PlatformScience API Helper Functions
 # ─────────────────────────────────────────────
 
-def enable_remote_diagnostics(dsn: str, token: str, max_retries: int = 5) -> tuple:
+def enable_remote_diagnostics(dsn: str, app_device_id: str, token: str, max_retries: int = 5) -> tuple:
     """
-    Enable remote diagnostics for a device via PlatformScience API.
+    Enable remote diagnostics for a device via Trimble API.
     Returns (success: bool, reason: str or None)
-    success=True means API returned 200
+    success=True means API returned 201
     reason explains why if success=False
-
-    Note: On 401 Unauthorized, returns immediately without retry.
-    Caller should prompt user for new token and retry.
     """
-    if not token or not token.strip():
-        return False, "No authentication token provided"
-    if not dsn or not dsn.strip():
-        return False, "No device DSN provided"
-
-    url = "https://cf-api.mc2.telematicsplatform.io/peoplenet/cf-gateway/v1/v2/application/send"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
     payload = {
-        "deviceId": dsn,
-        "destinationTopic": {"remoteDiagnostics":{"enabled": True}},
-        "payload": "[]",
-        "payloadContentType": "application/json"
+        "AppInstanceId": TRIMBLE_APP_INSTANCE_ID,
+        "AppDeviceId": app_device_id,
+        "Action": "AutoSuppress",
+        "OutboundMessage": {
+            "Name": "",
+            "Update": {
+                "state": {
+                    "desired": {
+                        "remoteDiagnostics": {
+                            "enabled": True
+                        }
+                    }
+                }
+            }
+        }
     }
 
     for attempt in range(max_retries):
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=10)
+            response = requests.post(TRIMBLE_ENABLE_URL, json=payload, headers=headers, timeout=10)
 
-            if response.status_code == 200:
+            if response.status_code == 201:
                 return True, None
             elif response.status_code == 401:
                 # Token expired
                 return False, "401 Unauthorized"
-            elif response.status_code == 404:
-                # Device not found
-                return False, "404 Device not found"
             elif response.status_code >= 500:
                 # Server error, retry with backoff
                 if attempt < max_retries - 1:
@@ -218,6 +217,28 @@ def enable_remote_diagnostics(dsn: str, token: str, max_retries: int = 5) -> tup
             return False, f"Network error: {str(e)}"
 
     return False, "Max retries exceeded"
+
+
+def lookup_app_device_id(dsn: str, paccar_token: str) -> str | None:
+    """
+    Lookup appDeviceId from DSN using PACCAR API.
+    Returns appDeviceId (str) or None if lookup fails.
+    """
+    url = f"https://security-gateway-rp.platform.fleethealth.io/vehicledevices/{dsn}"
+    headers = {"X-Auth-Token": paccar_token}
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            data = response.json()
+            app_device_id = data.get("provisioningInfo", {}).get("tpaasDevice", {}).get("appDeviceId")
+            if app_device_id:
+                return app_device_id
+
+        return None
+    except requests.RequestException:
+        return None
 
 
 def export_enable_results(results: list, timestamp: str) -> str | None:
@@ -362,18 +383,39 @@ def get_disabled_devices(results: list) -> list:
     return disabled
 
 
-def enable_devices_loop(disabled_devices: list, token: str) -> list:
+def lookup_device_ids(disabled_devices: list, paccar_token: str) -> list:
     """
-    Enable remote diagnostics for a list of devices.
+    Lookup appDeviceId for each disabled device.
+    Returns list of dicts with dsn, appDeviceId (skips devices where lookup fails).
+    """
+    devices_with_ids = []
+
+    for device in tqdm(disabled_devices, desc="Looking up device IDs"):
+        dsn = device["dsn"]
+        app_device_id = lookup_app_device_id(dsn, paccar_token)
+
+        if app_device_id:
+            devices_with_ids.append({
+                "dsn": dsn,
+                "appDeviceId": app_device_id
+            })
+
+    return devices_with_ids
+
+
+def enable_devices_loop(devices_with_ids: list, trimble_token: str) -> list:
+    """
+    Enable remote diagnostics for a list of devices with their appDeviceIds.
     Returns list of result dicts with DSN, status, reason, and timestamp.
     """
     results = []
     successful = 0
     failed = 0
 
-    for device in tqdm(disabled_devices, desc="Enabling remote diagnostics"):
+    for device in tqdm(devices_with_ids, desc="Enabling remote diagnostics"):
         dsn = device["dsn"]
-        success, reason = enable_remote_diagnostics(dsn, token)
+        app_device_id = device["appDeviceId"]
+        success, reason = enable_remote_diagnostics(dsn, app_device_id, trimble_token)
 
         result = {
             "dsn": dsn,
@@ -388,7 +430,7 @@ def enable_devices_loop(disabled_devices: list, token: str) -> list:
         else:
             failed += 1
 
-    print(f"\n  Successfully enabled {successful}/{len(disabled_devices)} devices")
+    print(f"\n  Successfully enabled {successful}/{len(devices_with_ids)} devices")
     if failed > 0:
         print(f"  Failed to enable {failed} devices (skipped)")
 
@@ -461,6 +503,13 @@ def fetch_shadow_state_for_devices(matched_df: pd.DataFrame, token: str) -> list
 
     return results
 
+
+# ─────────────────────────────────────────────
+# Trimble API Configuration
+# ─────────────────────────────────────────────
+
+TRIMBLE_APP_INSTANCE_ID = "d5554600-441f-4dda-b4b3-26dfbf79e91d"
+TRIMBLE_ENABLE_URL = "https://cloud.api.trimble.com/devicegateway/management/1.0/OutboundMessage/UpdateDeviceShadow"
 
 # Constants
 SEPARATOR_WIDTH = 60
@@ -630,22 +679,35 @@ def main():
                     confirm = input(f"\nConfirm enable {len(disabled_devices)} devices? (Y/N): ").strip().upper()
 
                     if confirm == "Y":
-                        # Get PlatformScience token
-                        ps_token = load_platformscience_token()
-                        if not ps_token:
-                            ps_token = prompt_for_platformscience_token()
+                        # Get PACCAR token for device ID lookups
+                        print("\nLooking up device IDs...")
+                        devices_with_ids = lookup_device_ids(disabled_devices, token)
 
-                        if ps_token:
-                            # Enable devices
-                            enable_results = enable_devices_loop(disabled_devices, ps_token)
+                        if devices_with_ids:
+                            found = len(devices_with_ids)
+                            skipped = len(disabled_devices) - found
+                            print(f"  Found {found}/{len(disabled_devices)} device IDs")
+                            if skipped > 0:
+                                print(f"  Skipped {skipped} devices (lookup failed)")
 
-                            # Export enable results
-                            enable_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                            enable_output = export_enable_results(enable_results, enable_timestamp)
-                            if enable_output:
-                                print(f"\n  Enable results exported to: {enable_output}")
+                            # Get Trimble token
+                            trimble_token = load_platformscience_token()
+                            if not trimble_token:
+                                trimble_token = prompt_for_platformscience_token()
+
+                            if trimble_token:
+                                # Enable devices
+                                enable_results = enable_devices_loop(devices_with_ids, trimble_token)
+
+                                # Export enable results
+                                enable_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                enable_output = export_enable_results(enable_results, enable_timestamp)
+                                if enable_output:
+                                    print(f"\n  Enable results exported to: {enable_output}")
+                            else:
+                                print("  Aborted: No Trimble token provided")
                         else:
-                            print("  Aborted: No PlatformScience token provided")
+                            print("  No devices found during lookup")
 
         input("\nPress Enter to continue...")
 
