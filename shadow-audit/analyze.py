@@ -810,6 +810,16 @@ def main():
             if output_file:
                 print(f"\n  Results exported to: {output_file}")
 
+            # [NEW] Send vinDiscovery commands to discover VINs
+            print("\nSending vinDiscovery commands to discover device VINs...")
+            vin_results = send_vin_discovery_loop(matched, token)
+
+            # Export vinDiscovery results
+            vin_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            vin_output = export_vin_discovery_results(vin_results, vin_timestamp)
+            if vin_output:
+                print(f"  VinDiscovery results exported to: {vin_output}")
+
             # Optional: Enable remote diagnostics for devices with disabled settings
             disabled_devices = get_disabled_devices(results)
             if disabled_devices:
