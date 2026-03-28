@@ -167,7 +167,15 @@ def enable_remote_diagnostics(dsn: str, token: str, max_retries: int = 5) -> tup
     Returns (success: bool, reason: str or None)
     success=True means API returned 200
     reason explains why if success=False
+
+    Note: On 401 Unauthorized, returns immediately without retry.
+    Caller should prompt user for new token and retry.
     """
+    if not token or not token.strip():
+        return False, "No authentication token provided"
+    if not dsn or not dsn.strip():
+        return False, "No device DSN provided"
+
     url = "https://cf-api.mc2.telematicsplatform.io/peoplenet/cf-gateway/v1/v2/application/send"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -175,7 +183,7 @@ def enable_remote_diagnostics(dsn: str, token: str, max_retries: int = 5) -> tup
     }
     payload = {
         "deviceId": dsn,
-        "destinationTopic": {"remoteDiagnostics":{"enabled": true}},
+        "destinationTopic": {"remoteDiagnostics":{"enabled": True}},
         "payload": "[]",
         "payloadContentType": "application/json"
     }
