@@ -220,6 +220,37 @@ def enable_remote_diagnostics(dsn: str, token: str, max_retries: int = 5) -> tup
     return False, "Max retries exceeded"
 
 
+def export_enable_results(results: list, timestamp: str) -> str | None:
+    """
+    Export enable operation results to CSV.
+    Returns the output filename (str) or None if write fails.
+    """
+    reports_dir = "reports"
+    output_filename = f"shadow-audit-enable-{timestamp}.csv"
+    output_file = os.path.join(reports_dir, output_filename)
+
+    try:
+        with open(output_file, "w", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=["DSN", "Enable Status", "Reason", "Timestamp"]
+            )
+            writer.writeheader()
+
+            for result in results:
+                writer.writerow({
+                    "DSN": result["dsn"],
+                    "Enable Status": result["status"],
+                    "Reason": result["reason"] or "",
+                    "Timestamp": result["timestamp"]
+                })
+
+        return output_file
+    except (OSError, IOError) as e:
+        print(f"  Warning: Could not write CSV file: {e}")
+        return None
+
+
 # ─────────────────────────────────────────────
 # PACCAR API Helper Functions
 # ─────────────────────────────────────────────
@@ -317,6 +348,51 @@ def cleanup_old_reports(max_reports: int = 25) -> None:
 
     except (OSError, IOError) as e:
         print(f"  Warning: Could not cleanup old reports: {e}")
+
+
+def get_disabled_devices(results: list) -> list:
+    """
+    Filter results to devices with reported_enabled == False.
+    Returns list of result dicts with disabled remote diagnostics.
+    """
+    disabled = []
+    for result in results:
+        if result.get("reported_enabled") is False:
+            disabled.append(result)
+    return disabled
+
+
+def enable_devices_loop(disabled_devices: list, token: str) -> list:
+    """
+    Enable remote diagnostics for a list of devices.
+    Returns list of result dicts with DSN, status, reason, and timestamp.
+    """
+    results = []
+    successful = 0
+    failed = 0
+
+    for device in tqdm(disabled_devices, desc="Enabling remote diagnostics"):
+        dsn = device["dsn"]
+        success, reason = enable_remote_diagnostics(dsn, token)
+
+        result = {
+            "dsn": dsn,
+            "status": "Success" if success else "Failed",
+            "reason": reason,
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
+        results.append(result)
+
+        if success:
+            successful += 1
+        else:
+            failed += 1
+
+    print(f"\n  Successfully enabled {successful}/{len(disabled_devices)} devices")
+    if failed > 0:
+        print(f"  Failed to enable {failed} devices (skipped)")
+
+    return results
 
 
 def export_shadow_state_results(results: list, timestamp: str) -> str | None:
@@ -537,6 +613,39 @@ def main():
             output_file = export_shadow_state_results(results, timestamp)
             if output_file:
                 print(f"\n  Results exported to: {output_file}")
+
+            # Optional: Enable remote diagnostics for devices with disabled settings
+            disabled_devices = get_disabled_devices(results)
+            if disabled_devices:
+                enable_prompt = input(f"\nFound {len(disabled_devices)} devices with Reported Enabled = False\nEnable remote diagnostics for these devices? (Y/N): ").strip().upper()
+
+                if enable_prompt == "Y":
+                    # Show filtered list
+                    print("\nDevices to enable:")
+                    for i, device in enumerate(disabled_devices[:10], 1):
+                        print(f"  {i}. {device['dsn']}")
+                    if len(disabled_devices) > 10:
+                        print(f"  ... and {len(disabled_devices) - 10} more")
+
+                    confirm = input(f"\nConfirm enable {len(disabled_devices)} devices? (Y/N): ").strip().upper()
+
+                    if confirm == "Y":
+                        # Get PlatformScience token
+                        ps_token = load_platformscience_token()
+                        if not ps_token:
+                            ps_token = prompt_for_platformscience_token()
+
+                        if ps_token:
+                            # Enable devices
+                            enable_results = enable_devices_loop(disabled_devices, ps_token)
+
+                            # Export enable results
+                            enable_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            enable_output = export_enable_results(enable_results, enable_timestamp)
+                            if enable_output:
+                                print(f"\n  Enable results exported to: {enable_output}")
+                        else:
+                            print("  Aborted: No PlatformScience token provided")
 
         input("\nPress Enter to continue...")
 
