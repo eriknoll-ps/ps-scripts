@@ -188,12 +188,39 @@ def extract_remote_diagnostics(shadow_state: dict) -> tuple:
         return None, None
 
 
+def cleanup_old_reports(max_reports: int = 25) -> None:
+    """
+    Remove old reports, keeping only the most recent N files.
+    """
+    reports_dir = "reports"
+    if not os.path.isdir(reports_dir):
+        return
+
+    try:
+        # Get all CSV files in reports directory
+        report_files = sorted(
+            [f for f in os.listdir(reports_dir) if f.startswith("shadow-audit-results-") and f.endswith(".csv")],
+            reverse=True  # Most recent first
+        )
+
+        # Remove files beyond max_reports
+        for old_file in report_files[max_reports:]:
+            file_path = os.path.join(reports_dir, old_file)
+            os.remove(file_path)
+
+    except (OSError, IOError) as e:
+        print(f"  Warning: Could not cleanup old reports: {e}")
+
+
 def export_shadow_state_results(results: list, timestamp: str) -> str | None:
     """
-    Export shadow state fetch results to CSV.
+    Export shadow state fetch results to CSV to reports directory.
+    Keeps only the most recent 25 reports.
     Returns the output filename (str) or None if write fails.
     """
-    output_file = f"shadow-audit-results-{timestamp}.csv"
+    reports_dir = "reports"
+    output_filename = f"shadow-audit-results-{timestamp}.csv"
+    output_file = os.path.join(reports_dir, output_filename)
 
     try:
         with open(output_file, "w", newline="") as f:
@@ -211,6 +238,8 @@ def export_shadow_state_results(results: list, timestamp: str) -> str | None:
                     "Fetch Timestamp": result["timestamp"]
                 })
 
+        # Cleanup old reports after successful write
+        cleanup_old_reports(max_reports=25)
         return output_file
     except (OSError, IOError) as e:
         print(f"  Warning: Could not write CSV file: {e}")
