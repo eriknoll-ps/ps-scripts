@@ -158,6 +158,61 @@ def prompt_for_platformscience_token() -> str:
 
 
 # ─────────────────────────────────────────────
+# PlatformScience API Helper Functions
+# ─────────────────────────────────────────────
+
+def enable_remote_diagnostics(dsn: str, token: str, max_retries: int = 5) -> tuple:
+    """
+    Enable remote diagnostics for a device via PlatformScience API.
+    Returns (success: bool, reason: str or None)
+    success=True means API returned 200
+    reason explains why if success=False
+    """
+    url = "https://cf-api.mc2.telematicsplatform.io/peoplenet/cf-gateway/v1/v2/application/send"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "deviceId": dsn,
+        "destinationTopic": '{"remoteDiagnostics":{"enabled": true}}',
+        "payload": "[]",
+        "payloadContentType": "application/json"
+    }
+
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=10)
+
+            if response.status_code == 200:
+                return True, None
+            elif response.status_code == 401:
+                # Token expired
+                return False, "401 Unauthorized"
+            elif response.status_code == 404:
+                # Device not found
+                return False, "404 Device not found"
+            elif response.status_code >= 500:
+                # Server error, retry with backoff
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** (attempt + 1)
+                    time.sleep(wait_time)
+                    continue
+                return False, f"{response.status_code} Server error"
+            else:
+                return False, f"{response.status_code} API error"
+
+        except requests.RequestException as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)
+                time.sleep(wait_time)
+                continue
+            return False, f"Network error: {str(e)}"
+
+    return False, "Max retries exceeded"
+
+
+# ─────────────────────────────────────────────
 # PACCAR API Helper Functions
 # ─────────────────────────────────────────────
 
