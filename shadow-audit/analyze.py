@@ -434,24 +434,40 @@ def get_disabled_devices(results: list) -> list:
     return disabled
 
 
-def lookup_device_ids(disabled_devices: list, paccar_token: str) -> list:
+def lookup_device_ids(disabled_devices: list, paccar_token: str, max_workers: int = 5) -> list:
     """
-    Lookup appDeviceId for each disabled device.
+    Lookup appDeviceId for each disabled device using multithreading.
     Returns list of dicts with dsn, appDeviceId (skips devices where lookup fails).
+    max_workers: Maximum number of concurrent threads (default 5)
     """
     devices_with_ids = []
 
-    for device in tqdm(disabled_devices, desc="Looking up device IDs"):
+    def lookup_device(device):
+        """Lookup appDeviceId for a single device."""
         dsn = device.get("dsn")
         if not dsn:
-            continue
-        app_device_id = lookup_app_device_id(dsn, paccar_token)
+            return None
 
+        app_device_id = lookup_app_device_id(dsn, paccar_token)
         if app_device_id:
-            devices_with_ids.append({
+            return {
                 "dsn": dsn,
                 "appDeviceId": app_device_id
-            })
+            }
+        return None
+
+    # Use ThreadPoolExecutor for concurrent lookups
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        futures = {executor.submit(lookup_device, device): device for device in disabled_devices}
+
+        # Process results as they complete with progress bar
+        with tqdm(total=len(disabled_devices), desc="Looking up device IDs") as pbar:
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    devices_with_ids.append(result)
+                pbar.update(1)
 
     return devices_with_ids
 
