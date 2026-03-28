@@ -498,6 +498,56 @@ def export_shadow_state_results(results: list, timestamp: str) -> str | None:
         return None
 
 
+def send_vin_discovery_command(dsn: str, token: str, delay: float = 0.2) -> tuple[bool, str]:
+    """
+    Send vinDiscovery command to a device via PACCAR API.
+    Returns (success: bool, result: str)
+    result contains response.result on success, error message on failure
+    """
+    if not dsn or not token:
+        return False, "Missing required parameter"
+
+    url = "https://security-gateway-rp.platform.fleethealth.io/transmit/command/synchronous"
+    headers = {
+        "X-Auth-Token": token,
+        "X-OEM": "paccar",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "deviceIds": [dsn],
+        "deviceType": "yogi",
+        "isTestMessage": False,
+        "data": {
+            "command_id": None,
+            "command": "vinDiscovery",
+            "parameters": {}
+        }
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                result = data.get("response", {}).get("result", "OK")
+                return True, result
+            else:
+                result = data.get("response", {}).get("result", "Command failed")
+                return False, result
+        else:
+            return False, f"{response.status_code} error"
+
+    except requests.RequestException as e:
+        return False, f"Network error: {str(e)}"
+
+    finally:
+        # Apply rate limit delay
+        time.sleep(delay)
+
+    return False, "Unknown error"
+
+
 def fetch_shadow_state_for_devices(matched_df: pd.DataFrame, token: str) -> list:
     """
     Fetch shadow state for matched Not Communicating devices.
