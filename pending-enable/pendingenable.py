@@ -114,6 +114,7 @@ def _extract_paccar_software_status(vin: str, bearer_token: Optional[str] = None
     """
     result = {
         "vin": vin,
+        "dsn": None,
         "softwareUpdateStatus": None,
         "softwareTruckStatus": None,
         "disabledOemLicense": None,
@@ -174,13 +175,22 @@ def _extract_paccar_software_status(vin: str, bearer_token: Optional[str] = None
             if isinstance(location_info, dict):
                 result["lastUpdated"] = location_info.get("lastUpdated")
 
-            # Extract device info (make, pmgSwVersion)
+            # Extract device info (dsn, make, pmgSwVersion)
             device_info_block = vehicle_details.get("deviceInfo", {})
             if isinstance(device_info_block, dict):
+                # Extract DSN (try multiple possible locations)
+                if "dsn" in device_info_block:
+                    result["dsn"] = device_info_block.get("dsn")
+                elif "serialNumber" in device_info_block:
+                    result["dsn"] = device_info_block.get("serialNumber")
+
                 # Extract pmgSwVersion from pmgInfo
                 pmg_info = device_info_block.get("pmgInfo", {})
                 if isinstance(pmg_info, dict):
                     result["pmgSwVersion"] = pmg_info.get("pmgSwVersion")
+                    # Also try to get DSN from pmgInfo if not found above
+                    if not result["dsn"] and "dsn" in pmg_info:
+                        result["dsn"] = pmg_info.get("dsn")
 
                 # Extract make from vinRollCallData
                 vin_roll_call_data = device_info_block.get("vinRollCallData", [])
@@ -234,7 +244,7 @@ def retrieve_paccar_solutions_data(pending_df: pd.DataFrame, bearer_token: Optio
 
     # Initialize PACCAR columns
     paccar_columns = [
-        "softwareUpdateStatus", "softwareTruckStatus", "disabledOemLicense",
+        "dsn", "softwareUpdateStatus", "softwareTruckStatus", "disabledOemLicense",
         "removalCategory", "lastUpdated", "make", "pmgSwVersion",
         "paccar_retrieval_success", "paccar_error"
     ]
@@ -273,6 +283,7 @@ def retrieve_paccar_solutions_data(pending_df: pd.DataFrame, bearer_token: Optio
     # Map results back to DataFrame
     if results:
         vin_str = result_df["vin"].astype(str)
+        result_df["dsn"] = vin_str.map(lambda v: results.get(v, {}).get("dsn"))
         result_df["softwareUpdateStatus"] = vin_str.map(lambda v: results.get(v, {}).get("softwareUpdateStatus"))
         result_df["softwareTruckStatus"] = vin_str.map(lambda v: results.get(v, {}).get("softwareTruckStatus"))
         result_df["disabledOemLicense"] = vin_str.map(lambda v: results.get(v, {}).get("disabledOemLicense"))
