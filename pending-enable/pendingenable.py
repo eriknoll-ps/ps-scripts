@@ -406,6 +406,57 @@ def save_paccar_token(token: str) -> bool:
         return False
 
 
+def refresh_paccar_token(current_token: str) -> Optional[str]:
+    """
+    Attempt to refresh expired PACCAR bearer token via POST request with encodedToken.
+
+    Args:
+        current_token: Current bearer token to refresh
+
+    Returns:
+        New bearer token if refresh successful, None if refresh fails
+    """
+    try:
+        url = "https://security-gateway-rp.platform.fleethealth.io/refreshToken"
+        headers = {
+            "Authorization": f"Bearer {current_token}",
+            "X-Auth-Token": current_token,
+            "X-OEM": "paccar",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+
+        # POST the current token as encodedToken in JSON payload
+        payload = {
+            "encodedToken": current_token
+        }
+
+        response = requests.post(url, json=payload, headers=headers, timeout=10, verify=False)
+
+        new_token = None
+
+        # Check if response was successful
+        if response.status_code == 200:
+            # Try to parse JSON response body for new token
+            try:
+                data = response.json()
+                # Look for the new token in response
+                for key in ["encodedToken", "token", "accessToken", "access_token", "bearer_token", "new_token"]:
+                    if key in data and data[key]:
+                        new_token = data[key]
+                        if new_token:
+                            break
+            except (ValueError, json.JSONDecodeError):
+                pass
+
+        return new_token if new_token else None
+
+    except requests.exceptions.RequestException as e:
+        if isinstance(e, requests.exceptions.ConnectionError):
+            print(f"[DEBUG] Token refresh connection failed: {e}")
+        return None
+
+
 def load_csv_file(filepath: str) -> Optional[pd.DataFrame]:
     """
     Load CSV file into DataFrame.
@@ -605,12 +656,29 @@ def main():
                 paccar_retrieved = True
             except Exception as e:
                 if "PACCARAuthenticationError" in type(e).__name__:
-                    print("[WARNING] Cached PACCAR token expired or invalid.")
-                    bearer_token = None
+                    print("[WARNING] Cached PACCAR token expired or invalid. Attempting to refresh...")
+                    # Try to refresh the cached token
+                    refreshed_token = refresh_paccar_token(cached_token)
+                    if refreshed_token:
+                        print("Token refreshed successfully!")
+                        try:
+                            pending_df = retrieve_paccar_solutions_data(pending_df, bearer_token=refreshed_token, debug=False)
+                            bearer_token = refreshed_token
+                            save_paccar_token(refreshed_token)
+                            paccar_retrieved = True
+                        except Exception as retry_e:
+                            if "PACCARAuthenticationError" in type(retry_e).__name__:
+                                print("Refreshed token also failed. Please provide a new token.")
+                                bearer_token = None
+                            else:
+                                raise
+                    else:
+                        print("Token refresh failed. Please provide a new token.")
+                        bearer_token = None
                 else:
                     raise
 
-        # If cached token failed or doesn't exist, prompt for new token
+        # If cached/refreshed token failed or doesn't exist, prompt for new token
         if not bearer_token:
             bearer_token = input("Enter PACCAR API bearer token (or press Enter to skip): ").strip()
 
