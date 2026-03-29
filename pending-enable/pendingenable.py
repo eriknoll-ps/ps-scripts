@@ -328,10 +328,66 @@ def save_results_to_csv(df: pd.DataFrame, filename: Optional[str] = None) -> str
     return filepath
 
 
+def find_most_recent_csv(pattern: str = "pending_updates_*.csv") -> Optional[str]:
+    """
+    Find the most recently modified CSV file matching the pattern.
+
+    Args:
+        pattern: Glob pattern for files to search (default: "pending_updates_*.csv")
+
+    Returns:
+        Full path to most recent file, or None if no files found
+    """
+    import glob
+    files = glob.glob(pattern)
+    if not files:
+        return None
+    # Sort by modification time (most recent first)
+    return max(files, key=os.path.getmtime)
+
+
+def load_csv_file(filepath: str) -> Optional[pd.DataFrame]:
+    """
+    Load CSV file into DataFrame.
+
+    Args:
+        filepath: Path to CSV file
+
+    Returns:
+        DataFrame or None if load fails
+    """
+    try:
+        df = pd.read_csv(filepath)
+        print(f"[OK] Loaded {len(df)} rows from {filepath}")
+        return df
+    except Exception as e:
+        print(f"[ERROR] Failed to load {filepath}: {e}")
+        return None
+
+
 def main():
     """Standalone usage: download pending updates and retrieve PACCAR Solutions data."""
-    # Download pending updates
-    pending_df = download_pending_updates()
+    # Check for existing CSV files
+    print("="*70)
+    print("Pending Enable - Data Loading")
+    print("="*70)
+
+    most_recent = find_most_recent_csv()
+    if most_recent:
+        print(f"\nFound existing file: {most_recent}")
+        use_existing = input("Use this file to skip download/PACCAR steps? (y/n): ").strip().lower()
+        if use_existing == "y":
+            pending_df = load_csv_file(most_recent)
+            if pending_df is None:
+                print("Failed to load file. Proceeding with fresh download.")
+                pending_df = download_pending_updates()
+            else:
+                print(f"Skipping download and PACCAR retrieval steps.\n")
+        else:
+            pending_df = download_pending_updates()
+    else:
+        pending_df = download_pending_updates()
+
     if pending_df is None:
         print("Failed to download pending updates.")
         sys.exit(1)
