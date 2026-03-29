@@ -23,6 +23,11 @@ PACCAR_BASE_URL = "https://security-gateway-rp.platform.fleethealth.io"
 PACCAR_TIMEOUT = 10
 PACCAR_MAX_WORKERS = 5
 
+REPORTS_DIR = "reports"
+
+# Create reports directory if it doesn't exist
+os.makedirs(REPORTS_DIR, exist_ok=True)
+
 logger = logging.getLogger(__name__)
 
 
@@ -308,7 +313,7 @@ def get_report_filename(prefix: str = "pending_updates") -> str:
 
 def save_results_to_csv(df: pd.DataFrame, filename: Optional[str] = None) -> str:
     """
-    Save results DataFrame to CSV file.
+    Save results DataFrame to CSV file in reports directory.
 
     Args:
         df: DataFrame to save
@@ -320,8 +325,8 @@ def save_results_to_csv(df: pd.DataFrame, filename: Optional[str] = None) -> str
     if filename is None:
         filename = get_report_filename("pending_updates")
 
-    # Save to current directory
-    filepath = filename
+    # Save to reports directory
+    filepath = os.path.join(REPORTS_DIR, filename)
     df.to_csv(filepath, index=False)
     print(f"[OK] Results saved to: {filepath}")
 
@@ -330,7 +335,7 @@ def save_results_to_csv(df: pd.DataFrame, filename: Optional[str] = None) -> str
 
 def find_most_recent_csv(pattern: str = "pending_updates_*.csv") -> Optional[str]:
     """
-    Find the most recently modified CSV file matching the pattern.
+    Find the most recently modified CSV file matching the pattern in reports directory.
 
     Args:
         pattern: Glob pattern for files to search (default: "pending_updates_*.csv")
@@ -339,7 +344,8 @@ def find_most_recent_csv(pattern: str = "pending_updates_*.csv") -> Optional[str
         Full path to most recent file, or None if no files found
     """
     import glob
-    files = glob.glob(pattern)
+    search_pattern = os.path.join(REPORTS_DIR, pattern)
+    files = glob.glob(search_pattern)
     if not files:
         return None
     # Sort by modification time (most recent first)

@@ -1,0 +1,10 @@
+# Generated reports
+reports/
+*.csv
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
