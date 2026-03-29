@@ -357,7 +357,12 @@ def load_csv_file(filepath: str) -> Optional[pd.DataFrame]:
         DataFrame or None if load fails
     """
     try:
+        # Try to parse both updateDate and lastUpdated, but don't fail if they don't exist
         df = pd.read_csv(filepath)
+        if "updateDate" in df.columns:
+            df["updateDate"] = pd.to_datetime(df["updateDate"], errors="coerce")
+        if "lastUpdated" in df.columns:
+            df["lastUpdated"] = pd.to_datetime(df["lastUpdated"], errors="coerce")
         print(f"[OK] Loaded {len(df)} rows from {filepath}")
         return df
     except Exception as e:
@@ -365,13 +370,14 @@ def load_csv_file(filepath: str) -> Optional[pd.DataFrame]:
         return None
 
 
-def filter_by_update_date(df: pd.DataFrame, hours: int = 24) -> pd.DataFrame:
+def filter_by_update_date(df: pd.DataFrame, hours: int = 24, debug: bool = False) -> pd.DataFrame:
     """
     Filter DataFrame to include only vehicles with updateDate within past X hours.
 
     Args:
         df: Input DataFrame (must contain 'updateDate' column with ISO format timestamps)
         hours: Number of hours to look back (default: 24)
+        debug: Enable debug output for troubleshooting
 
     Returns:
         Filtered DataFrame
@@ -391,6 +397,14 @@ def filter_by_update_date(df: pd.DataFrame, hours: int = 24) -> pd.DataFrame:
         cutoff_time = now - datetime.timedelta(hours=hours)
         cutoff_timestamp = pd.Timestamp(cutoff_time)
 
+        if debug:
+            print(f"[DEBUG] Current UTC time: {now}")
+            print(f"[DEBUG] Cutoff time (now - {hours}h): {cutoff_time}")
+            print(f"[DEBUG] updateDate dtype: {df['updateDate'].dtype}")
+            print(f"[DEBUG] updateDate timezone: {df['updateDate'].dt.tz}")
+            print(f"[DEBUG] Sample updateDate values:")
+            print(df['updateDate'].head(3).to_string())
+
         # Ensure updateDate column is UTC-aware for comparison
         if df["updateDate"].dt.tz is None:
             # If timezone-naive, assume UTC
@@ -405,10 +419,18 @@ def filter_by_update_date(df: pd.DataFrame, hours: int = 24) -> pd.DataFrame:
         if removed_count > 0:
             print(f"  (Removed {removed_count} older vehicles)")
 
+        # Show newest vehicles if we have results
+        if len(filtered_df) > 0 and debug:
+            print(f"\n[DEBUG] Newest {min(3, len(filtered_df))} updateDates:")
+            print(filtered_df.nlargest(3, "updateDate")[["vin", "updateDate"]].to_string())
+
         return filtered_df
 
     except Exception as e:
         print(f"[ERROR] Failed to filter by updateDate: {e}")
+        if debug:
+            import traceback
+            traceback.print_exc()
         return df
 
 
@@ -458,12 +480,13 @@ def main():
 
     if filter_dates == "y":
         hours_input = input("Enter number of hours (default 24): ").strip()
+        debug_filter = input("Enable debug output? (y/n): ").strip().lower() == "y"
         try:
             hours = int(hours_input) if hours_input else 24
-            pending_df = filter_by_update_date(pending_df, hours=hours)
+            pending_df = filter_by_update_date(pending_df, hours=hours, debug=debug_filter)
         except ValueError:
             print(f"[ERROR] Invalid input '{hours_input}'. Using default 24 hours.")
-            pending_df = filter_by_update_date(pending_df, hours=24)
+            pending_df = filter_by_update_date(pending_df, hours=24, debug=debug_filter)
 
     # Display summary
     print("\n" + "="*70)
