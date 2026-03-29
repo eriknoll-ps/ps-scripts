@@ -482,10 +482,17 @@ def main():
     print("="*70)
     retrieve_paccar = input("Retrieve PACCAR Solutions data for these vehicles? (y/n): ").strip().lower()
 
+    paccar_retrieved = False
     if retrieve_paccar == "y":
         bearer_token = input("Enter PACCAR API bearer token (or press Enter to skip): ").strip()
         if bearer_token:
             pending_df = retrieve_paccar_solutions_data(pending_df, bearer_token=bearer_token, debug=False)
+            paccar_retrieved = True
+
+            # Save enriched data after PACCAR retrieval
+            print("\n" + "="*70)
+            paccar_filepath = save_results_to_csv(pending_df)
+            print("="*70)
 
     # Ask for lastUpdated filtering
     print("\n" + "="*70)
@@ -493,15 +500,18 @@ def main():
     print("="*70)
     filter_dates = input("Filter to vehicles with lastUpdated within past X hours? (y/n): ").strip().lower()
 
+    filter_applied = False
     if filter_dates == "y":
         hours_input = input("Enter number of hours (default 24): ").strip()
         debug_filter = input("Enable debug output? (y/n): ").strip().lower() == "y"
         try:
             hours = int(hours_input) if hours_input else 24
             pending_df = filter_by_last_updated(pending_df, hours=hours, debug=debug_filter)
+            filter_applied = True
         except ValueError:
             print(f"[ERROR] Invalid input '{hours_input}'. Using default 24 hours.")
             pending_df = filter_by_last_updated(pending_df, hours=24, debug=debug_filter)
+            filter_applied = True
 
     # Display summary
     print("\n" + "="*70)
@@ -514,11 +524,25 @@ def main():
     print("\nFirst 10 rows:")
     print(pending_df.head(10).to_string(index=False))
 
-    # Save results
-    print("\n" + "="*70)
-    filepath = save_results_to_csv(pending_df)
-    print("="*70)
-    print(f"File ready for subsequent processing steps.")
+    # Save results (if filtering was applied, save the filtered version)
+    if filter_applied:
+        print("\n" + "="*70)
+        print("Saving Filtered Results")
+        print("="*70)
+        filepath = save_results_to_csv(pending_df)
+        print("="*70)
+        print(f"Filtered file saved (original PACCAR data also saved above).")
+    elif paccar_retrieved:
+        # PACCAR data was already saved above after retrieval
+        print("\n" + "="*70)
+        print("(PACCAR-enriched data already saved above)")
+        print("="*70)
+    else:
+        # No PACCAR retrieval, save the download
+        print("\n" + "="*70)
+        filepath = save_results_to_csv(pending_df)
+        print("="*70)
+        print(f"File ready for subsequent processing steps.")
 
 
 if __name__ == "__main__":
