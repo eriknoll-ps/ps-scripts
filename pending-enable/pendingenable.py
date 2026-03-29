@@ -535,25 +535,42 @@ def main():
     if retrieve_paccar == "y":
         # Try to load cached token first
         cached_token = load_paccar_token()
+        bearer_token = None
 
+        # Try cached token silently first
         if cached_token:
-            use_cached = input(f"Use cached PACCAR token? (y/n): ").strip().lower()
-            if use_cached == "y":
+            print("Attempting to use cached PACCAR token...")
+            try:
+                pending_df = retrieve_paccar_solutions_data(pending_df, bearer_token=cached_token, debug=False)
                 bearer_token = cached_token
-            else:
-                bearer_token = input("Enter PACCAR API bearer token (or press Enter to skip): ").strip()
-        else:
+                paccar_retrieved = True
+            except Exception as e:
+                if "PACCARAuthenticationError" in type(e).__name__:
+                    print("[WARNING] Cached PACCAR token expired or invalid.")
+                    bearer_token = None
+                else:
+                    raise
+
+        # If cached token failed or doesn't exist, prompt for new token
+        if not bearer_token:
             bearer_token = input("Enter PACCAR API bearer token (or press Enter to skip): ").strip()
 
-        if bearer_token:
-            # Save token if it's new or different from cached
-            if bearer_token != cached_token:
-                save_paccar_token(bearer_token)
+            if bearer_token:
+                # Try with new token
+                try:
+                    pending_df = retrieve_paccar_solutions_data(pending_df, bearer_token=bearer_token, debug=False)
+                    # Save new token if successful
+                    save_paccar_token(bearer_token)
+                    paccar_retrieved = True
+                except Exception as e:
+                    if "PACCARAuthenticationError" in type(e).__name__:
+                        print("[ERROR] Provided token is invalid or expired. Skipping PACCAR retrieval.")
+                        bearer_token = None
+                    else:
+                        raise
 
-            pending_df = retrieve_paccar_solutions_data(pending_df, bearer_token=bearer_token, debug=False)
-            paccar_retrieved = True
-
-            # Save enriched data after PACCAR retrieval
+        # Save enriched data after successful PACCAR retrieval
+        if paccar_retrieved:
             print("\n" + "="*70)
             paccar_filepath = save_results_to_csv(pending_df)
             print("="*70)
