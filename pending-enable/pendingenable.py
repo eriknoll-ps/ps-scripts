@@ -365,6 +365,53 @@ def load_csv_file(filepath: str) -> Optional[pd.DataFrame]:
         return None
 
 
+def filter_by_update_date(df: pd.DataFrame, hours: int = 24) -> pd.DataFrame:
+    """
+    Filter DataFrame to include only vehicles with updateDate within past X hours.
+
+    Args:
+        df: Input DataFrame (must contain 'updateDate' column with ISO format timestamps)
+        hours: Number of hours to look back (default: 24)
+
+    Returns:
+        Filtered DataFrame
+    """
+    if "updateDate" not in df.columns:
+        print("[WARNING] 'updateDate' column not found. Skipping filter.")
+        return df
+
+    try:
+        # Parse updateDate as datetime (ISO format)
+        df = df.copy()
+        df["updateDate"] = pd.to_datetime(df["updateDate"], errors="coerce")
+
+        # Calculate cutoff time (now - X hours)
+        # Use UTC-aware datetime for consistent comparison
+        now = datetime.datetime.now(datetime.timezone.utc)
+        cutoff_time = now - datetime.timedelta(hours=hours)
+        cutoff_timestamp = pd.Timestamp(cutoff_time)
+
+        # Ensure updateDate column is UTC-aware for comparison
+        if df["updateDate"].dt.tz is None:
+            # If timezone-naive, assume UTC
+            df["updateDate"] = df["updateDate"].dt.tz_localize("UTC")
+
+        # Filter to rows within the time window
+        mask = df["updateDate"] >= cutoff_timestamp
+        filtered_df = df[mask].copy()
+
+        removed_count = len(df) - len(filtered_df)
+        print(f"Filtered to {len(filtered_df)} vehicles with updateDate within past {hours} hours")
+        if removed_count > 0:
+            print(f"  (Removed {removed_count} older vehicles)")
+
+        return filtered_df
+
+    except Exception as e:
+        print(f"[ERROR] Failed to filter by updateDate: {e}")
+        return df
+
+
 def main():
     """Standalone usage: download pending updates and retrieve PACCAR Solutions data."""
     # Check for existing CSV files
@@ -402,6 +449,21 @@ def main():
         bearer_token = input("Enter PACCAR API bearer token (or press Enter to skip): ").strip()
         if bearer_token:
             pending_df = retrieve_paccar_solutions_data(pending_df, bearer_token=bearer_token, debug=False)
+
+    # Ask for updateDate filtering
+    print("\n" + "="*70)
+    print("Filter by Update Date (Optional)")
+    print("="*70)
+    filter_dates = input("Filter to vehicles with updateDate within past X hours? (y/n): ").strip().lower()
+
+    if filter_dates == "y":
+        hours_input = input("Enter number of hours (default 24): ").strip()
+        try:
+            hours = int(hours_input) if hours_input else 24
+            pending_df = filter_by_update_date(pending_df, hours=hours)
+        except ValueError:
+            print(f"[ERROR] Invalid input '{hours_input}'. Using default 24 hours.")
+            pending_df = filter_by_update_date(pending_df, hours=24)
 
     # Display summary
     print("\n" + "="*70)
