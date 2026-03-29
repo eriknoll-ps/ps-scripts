@@ -419,6 +419,54 @@ def load_csv_file(filepath: str) -> Optional[pd.DataFrame]:
         return None
 
 
+def filter_exclude_dsn_range(df: pd.DataFrame, min_dsn: int = 30000000, max_dsn: int = 40000000, debug: bool = False) -> pd.DataFrame:
+    """
+    Filter DataFrame to exclude devices with DSN in specified range.
+
+    Args:
+        df: Input DataFrame (must contain 'dsn' column)
+        min_dsn: Minimum DSN to exclude (default: 30000000)
+        max_dsn: Maximum DSN to exclude (default: 40000000)
+        debug: Enable debug output
+
+    Returns:
+        Filtered DataFrame with excluded DSN range removed
+    """
+    if "dsn" not in df.columns:
+        if debug:
+            print("[DEBUG] 'dsn' column not found. Skipping DSN range filter.")
+        return df
+
+    try:
+        df = df.copy()
+
+        # Convert DSN to numeric, handling any non-numeric values
+        df["dsn_numeric"] = pd.to_numeric(df["dsn"], errors="coerce")
+
+        # Create mask for devices outside the exclusion range
+        # Keep devices where DSN is NaN or outside the range
+        mask = (df["dsn_numeric"].isna()) | (df["dsn_numeric"] < min_dsn) | (df["dsn_numeric"] > max_dsn)
+        filtered_df = df[mask].copy()
+
+        # Drop the temporary numeric column
+        filtered_df = filtered_df.drop(columns=["dsn_numeric"])
+
+        removed_count = len(df) - len(filtered_df)
+        print(f"Filtered out {removed_count} devices with DSN in range {min_dsn:,} - {max_dsn:,}")
+        print(f"Remaining: {len(filtered_df)} devices")
+
+        if debug and removed_count > 0:
+            print(f"[DEBUG] Removed DSN values:")
+            excluded = df[~mask][["vin", "dsn"]].drop_duplicates("dsn")
+            print(excluded.to_string(index=False))
+
+        return filtered_df
+
+    except Exception as e:
+        print(f"[ERROR] Failed to filter by DSN range: {e}")
+        return df
+
+
 def filter_by_last_updated(df: pd.DataFrame, hours: int = 24, debug: bool = False, use_local_tz: bool = True) -> pd.DataFrame:
     """
     Filter DataFrame to include only vehicles with lastUpdated within past X hours.
@@ -574,6 +622,14 @@ def main():
             print("\n" + "="*70)
             paccar_filepath = save_results_to_csv(pending_df)
             print("="*70)
+
+            # Filter by DSN range if DSN column exists
+            if "dsn" in pending_df.columns:
+                print("\n" + "="*70)
+                print("Filtering by DSN Range")
+                print("="*70)
+                pending_df = filter_exclude_dsn_range(pending_df, min_dsn=30000000, max_dsn=40000000, debug=False)
+                print("="*70)
 
     # Ask for lastUpdated filtering
     print("\n" + "="*70)
