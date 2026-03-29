@@ -2,6 +2,9 @@
 reports/
 *.csv
 
+# Auth tokens (credentials - keep out of source control)
+.paccar_token
+
 # Python
 __pycache__/
 *.pyc

@@ -24,6 +24,7 @@ PACCAR_TIMEOUT = 10
 PACCAR_MAX_WORKERS = 5
 
 REPORTS_DIR = "reports"
+PACCAR_TOKEN_FILE = ".paccar_token"
 
 # Create reports directory if it doesn't exist
 os.makedirs(REPORTS_DIR, exist_ok=True)
@@ -352,6 +353,48 @@ def find_most_recent_csv(pattern: str = "pending_updates_*.csv") -> Optional[str
     return max(files, key=os.path.getmtime)
 
 
+def load_paccar_token() -> Optional[str]:
+    """
+    Load cached PACCAR bearer token from .paccar_token file.
+
+    Returns:
+        Bearer token string or None if file doesn't exist
+    """
+    try:
+        if os.path.exists(PACCAR_TOKEN_FILE):
+            with open(PACCAR_TOKEN_FILE, "r") as f:
+                token = f.read().strip()
+                if token:
+                    return token
+    except Exception as e:
+        print(f"[WARNING] Failed to load cached PACCAR token: {e}")
+    return None
+
+
+def save_paccar_token(token: str) -> bool:
+    """
+    Save PACCAR bearer token to .paccar_token file (read-protected).
+
+    Args:
+        token: Bearer token to cache
+
+    Returns:
+        True if saved successfully, False otherwise
+    """
+    try:
+        with open(PACCAR_TOKEN_FILE, "w") as f:
+            f.write(token)
+        # Set file permissions to read-only for current user (Unix-like)
+        try:
+            os.chmod(PACCAR_TOKEN_FILE, 0o600)
+        except:
+            pass  # Windows doesn't support Unix permissions
+        return True
+    except Exception as e:
+        print(f"[WARNING] Failed to save PACCAR token: {e}")
+        return False
+
+
 def load_csv_file(filepath: str) -> Optional[pd.DataFrame]:
     """
     Load CSV file into DataFrame.
@@ -490,8 +533,23 @@ def main():
 
     paccar_retrieved = False
     if retrieve_paccar == "y":
-        bearer_token = input("Enter PACCAR API bearer token (or press Enter to skip): ").strip()
+        # Try to load cached token first
+        cached_token = load_paccar_token()
+
+        if cached_token:
+            use_cached = input(f"Use cached PACCAR token? (y/n): ").strip().lower()
+            if use_cached == "y":
+                bearer_token = cached_token
+            else:
+                bearer_token = input("Enter PACCAR API bearer token (or press Enter to skip): ").strip()
+        else:
+            bearer_token = input("Enter PACCAR API bearer token (or press Enter to skip): ").strip()
+
         if bearer_token:
+            # Save token if it's new or different from cached
+            if bearer_token != cached_token:
+                save_paccar_token(bearer_token)
+
             pending_df = retrieve_paccar_solutions_data(pending_df, bearer_token=bearer_token, debug=False)
             paccar_retrieved = True
 
