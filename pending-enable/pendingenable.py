@@ -370,59 +370,74 @@ def load_csv_file(filepath: str) -> Optional[pd.DataFrame]:
         return None
 
 
-def filter_by_update_date(df: pd.DataFrame, hours: int = 24, debug: bool = False) -> pd.DataFrame:
+def filter_by_last_updated(df: pd.DataFrame, hours: int = 24, debug: bool = False, use_local_tz: bool = True) -> pd.DataFrame:
     """
-    Filter DataFrame to include only vehicles with updateDate within past X hours.
+    Filter DataFrame to include only vehicles with lastUpdated within past X hours.
+    Uses PACCAR lastUpdated field (device's last update time in PACCAR system).
 
     Args:
-        df: Input DataFrame (must contain 'updateDate' column with ISO format timestamps)
+        df: Input DataFrame (must contain 'lastUpdated' column with ISO format timestamps)
         hours: Number of hours to look back (default: 24)
         debug: Enable debug output for troubleshooting
+        use_local_tz: If True, use local timezone; if False, use UTC (default: True)
 
     Returns:
         Filtered DataFrame
     """
-    if "updateDate" not in df.columns:
-        print("[WARNING] 'updateDate' column not found. Skipping filter.")
+    if "lastUpdated" not in df.columns:
+        print("[WARNING] 'lastUpdated' column not found. (Need to retrieve PACCAR Solutions data first)")
         return df
 
     try:
-        # Parse updateDate as datetime (ISO format)
+        # Parse lastUpdated as datetime (ISO format)
         df = df.copy()
-        df["updateDate"] = pd.to_datetime(df["updateDate"], errors="coerce")
+        df["lastUpdated"] = pd.to_datetime(df["lastUpdated"], errors="coerce")
 
         # Calculate cutoff time (now - X hours)
-        # Use UTC-aware datetime for consistent comparison
-        now = datetime.datetime.now(datetime.timezone.utc)
-        cutoff_time = now - datetime.timedelta(hours=hours)
-        cutoff_timestamp = pd.Timestamp(cutoff_time)
+        if use_local_tz:
+            # Use local timezone (get timezone-aware "now" in local TZ)
+            now = datetime.datetime.now().astimezone()
+            tz_name = now.tzname()
+            # Convert to UTC for consistent comparison with updateDate
+            now_utc = now.astimezone(datetime.timezone.utc)
+        else:
+            # Use UTC
+            now = datetime.datetime.now(datetime.timezone.utc)
+            now_utc = now
+            tz_name = "UTC"
+
+        cutoff_time = now_utc - datetime.timedelta(hours=hours)
 
         if debug:
-            print(f"[DEBUG] Current UTC time: {now}")
-            print(f"[DEBUG] Cutoff time (now - {hours}h): {cutoff_time}")
-            print(f"[DEBUG] updateDate dtype: {df['updateDate'].dtype}")
-            print(f"[DEBUG] updateDate timezone: {df['updateDate'].dt.tz}")
-            print(f"[DEBUG] Sample updateDate values:")
-            print(df['updateDate'].head(3).to_string())
+            print(f"[DEBUG] Current time ({tz_name}): {now}")
+            print(f"[DEBUG] Current time (UTC): {now_utc}")
+            print(f"[DEBUG] Cutoff time (now - {hours}h, UTC): {cutoff_time}")
+            print(f"[DEBUG] lastUpdated dtype: {df['lastUpdated'].dtype}")
+            print(f"[DEBUG] lastUpdated timezone: {df['lastUpdated'].dt.tz}")
+            print(f"[DEBUG] Sample lastUpdated values:")
+            print(df['lastUpdated'].head(3).to_string())
 
-        # Ensure updateDate column is UTC-aware for comparison
-        if df["updateDate"].dt.tz is None:
-            # If timezone-naive, assume UTC
-            df["updateDate"] = df["updateDate"].dt.tz_localize("UTC")
+        # Convert cutoff_time to pandas Timestamp for comparison
+        # Ensure it's compatible with the lastUpdated column
+        cutoff_timestamp = pd.Timestamp(cutoff_time)
+
+        # If lastUpdated is timezone-naive, strip timezone from cutoff
+        if df["lastUpdated"].dt.tz is None:
+            cutoff_timestamp = cutoff_timestamp.tz_localize(None)
 
         # Filter to rows within the time window
-        mask = df["updateDate"] >= cutoff_timestamp
+        mask = df["lastUpdated"] >= cutoff_timestamp
         filtered_df = df[mask].copy()
 
         removed_count = len(df) - len(filtered_df)
-        print(f"Filtered to {len(filtered_df)} vehicles with updateDate within past {hours} hours")
+        print(f"Filtered to {len(filtered_df)} vehicles with lastUpdated within past {hours} hours")
         if removed_count > 0:
             print(f"  (Removed {removed_count} older vehicles)")
 
         # Show newest vehicles if we have results
         if len(filtered_df) > 0 and debug:
-            print(f"\n[DEBUG] Newest {min(3, len(filtered_df))} updateDates:")
-            print(filtered_df.nlargest(3, "updateDate")[["vin", "updateDate"]].to_string())
+            print(f"\n[DEBUG] Newest {min(3, len(filtered_df))} lastUpdated times:")
+            print(filtered_df.nlargest(3, "lastUpdated")[["vin", "lastUpdated"]].to_string())
 
         return filtered_df
 
@@ -472,21 +487,21 @@ def main():
         if bearer_token:
             pending_df = retrieve_paccar_solutions_data(pending_df, bearer_token=bearer_token, debug=False)
 
-    # Ask for updateDate filtering
+    # Ask for lastUpdated filtering
     print("\n" + "="*70)
-    print("Filter by Update Date (Optional)")
+    print("Filter by Last Updated (Optional)")
     print("="*70)
-    filter_dates = input("Filter to vehicles with updateDate within past X hours? (y/n): ").strip().lower()
+    filter_dates = input("Filter to vehicles with lastUpdated within past X hours? (y/n): ").strip().lower()
 
     if filter_dates == "y":
         hours_input = input("Enter number of hours (default 24): ").strip()
         debug_filter = input("Enable debug output? (y/n): ").strip().lower() == "y"
         try:
             hours = int(hours_input) if hours_input else 24
-            pending_df = filter_by_update_date(pending_df, hours=hours, debug=debug_filter)
+            pending_df = filter_by_last_updated(pending_df, hours=hours, debug=debug_filter)
         except ValueError:
             print(f"[ERROR] Invalid input '{hours_input}'. Using default 24 hours.")
-            pending_df = filter_by_update_date(pending_df, hours=24, debug=debug_filter)
+            pending_df = filter_by_last_updated(pending_df, hours=24, debug=debug_filter)
 
     # Display summary
     print("\n" + "="*70)
