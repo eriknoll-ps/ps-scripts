@@ -1597,6 +1597,93 @@ def _prompt_bb_token() -> Optional[str]:
     return None
 
 
+def lookup_bb_device_id(dsn: str, bb_token: str, max_retries: int = 3) -> Optional[str]:
+    """
+    Look up BB Portal device id by DSN.
+    Returns device id string, None if not found, raises BBAuthError on 401/403.
+    """
+    import time
+    url = f"{BB_BASE_URL}/devices"
+    headers = {"accept": "application/json", "Cookie": f"nexus={bb_token}"}
+
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, params={"identifier": str(dsn)}, headers=headers, timeout=10)
+            if response.status_code in (401, 403):
+                raise BBAuthError(f"{response.status_code} Unauthorized - BB Portal cookie expired or invalid")
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, list) and len(data) > 0:
+                    return data[0].get("id")
+                return None
+            if response.status_code >= 500:
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+            return None
+        except BBAuthError:
+            raise
+        except requests.RequestException:
+            if attempt < max_retries - 1:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            return None
+    return None
+
+
+def fetch_bb_device_attributes(device_id: str, bb_token: str, max_retries: int = 3) -> tuple:
+    """
+    Fetch BB Portal device attributes by device id.
+    Returns (backup_invalidation, last_scan), raises BBAuthError on 401/403.
+    """
+    import time
+    url = f"{BB_BASE_URL}/devices/{device_id}/attributes"
+    headers = {"accept": "application/json", "Cookie": f"nexus={bb_token}"}
+
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code in (401, 403):
+                raise BBAuthError(f"{response.status_code} Unauthorized - BB Portal cookie expired or invalid")
+            if response.status_code == 200:
+                attrs = response.json().get("attributes", {})
+                return attrs.get("backup_invalidation"), attrs.get("last_scan")
+            if response.status_code >= 500:
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+            return None, None
+        except BBAuthError:
+            raise
+        except requests.RequestException:
+            if attempt < max_retries - 1:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            return None, None
+    return None, None
+
+
+def fetch_bb_data_for_device(dsn: str, bb_token: str) -> dict:
+    """
+    Worker: look up device id then fetch attributes for one DSN.
+    Returns {dsn, bb_device_id, backup_invalidation, last_scan, status, reason}.
+    """
+    try:
+        device_id = lookup_bb_device_id(dsn, bb_token)
+        if device_id is None:
+            return {"dsn": dsn, "bb_device_id": None, "backup_invalidation": None,
+                    "last_scan": None, "status": "No device found", "reason": ""}
+        backup_invalidation, last_scan = fetch_bb_device_attributes(device_id, bb_token)
+        return {"dsn": dsn, "bb_device_id": device_id, "backup_invalidation": backup_invalidation,
+                "last_scan": last_scan, "status": "Success", "reason": ""}
+    except BBAuthError as e:
+        return {"dsn": dsn, "bb_device_id": None, "backup_invalidation": None,
+                "last_scan": None, "status": "Failed", "reason": str(e)}
+    except Exception as e:
+        return {"dsn": dsn, "bb_device_id": None, "backup_invalidation": None,
+                "last_scan": None, "status": "Failed", "reason": str(e)}
+
+
 def set_nexus_ota_desired(dsn: str, nexus_token: str, enabled: bool, max_retries: int = 5) -> tuple:
     """
     Set otaApp.otaEnabled for a Nexus device via PlatformScience cf-gateway API.
