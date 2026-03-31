@@ -1541,6 +1541,63 @@ def _analyze_tig_units(df: pd.DataFrame) -> None:
             filepath = save_results_to_csv(ota_true, filename=get_report_filename("tig_ota_true"))
             print(f"\nReport saved: {filepath}")
 
+    # BB Portal lookup for units where ota_reported is None/missing
+    ota_none = result[result["ota_reported"].isna()]
+    print("\n" + "-"*70)
+    print(f"Units with ota_reported = None/missing: {len(ota_none):,}")
+    if len(ota_none) > 0:
+        fetch_bb = input("Retrieve BB Portal data for these units? (y/n): ").strip().lower()
+        if fetch_bb == "y":
+            bb_token = load_bb_token()
+            if bb_token:
+                print("Using cached BB Portal token...")
+            else:
+                bb_token = _prompt_bb_token()
+
+            if bb_token:
+                dsns = ota_none["dsn"].dropna().astype(str).str.strip().tolist()
+                print(f"\nFetching BB Portal data for {len(dsns):,} devices...")
+                bb_results = []
+                with ThreadPoolExecutor(max_workers=BB_MAX_WORKERS) as executor:
+                    futures = {executor.submit(fetch_bb_data_for_device, dsn, bb_token): dsn for dsn in dsns}
+                    for future in tqdm(as_completed(futures), total=len(dsns), desc="BB Portal lookup", unit="device"):
+                        bb_results.append(future.result())
+
+                # Retry auth failures with new token
+                auth_failures = [r for r in bb_results if r["status"] == "Failed" and "Unauthorized" in (r["reason"] or "")]
+                if auth_failures:
+                    print(f"\n[WARNING] {len(auth_failures):,} device(s) failed with auth error.")
+                    new_token = _prompt_bb_token()
+                    if new_token:
+                        print(f"\nRetrying {len(auth_failures):,} failed devices...")
+                        failed_dsns = {r["dsn"] for r in auth_failures}
+                        bb_results = [r for r in bb_results if r["dsn"] not in failed_dsns]
+                        with ThreadPoolExecutor(max_workers=BB_MAX_WORKERS) as executor:
+                            retry_futures = {executor.submit(fetch_bb_data_for_device, r["dsn"], new_token): r["dsn"]
+                                             for r in auth_failures}
+                            for future in tqdm(as_completed(retry_futures), total=len(auth_failures), desc="Retrying BB Portal", unit="device"):
+                                bb_results.append(future.result())
+
+                succeeded = sum(1 for r in bb_results if r["status"] == "Success")
+                not_found = sum(1 for r in bb_results if r["status"] == "No device found")
+                failed = sum(1 for r in bb_results if r["status"] == "Failed")
+                with_invalidation = sum(1 for r in bb_results if r.get("backup_invalidation"))
+                print(f"\nBB Portal Summary:")
+                print(f"  Succeeded:                   {succeeded:,}")
+                print(f"  No device found:             {not_found:,}")
+                print(f"  Failed:                      {failed:,}")
+                print(f"  With backup_invalidation:    {with_invalidation:,}")
+                print(f"  Without backup_invalidation: {succeeded - with_invalidation:,}")
+
+                # Merge results back onto ota_none and save
+                bb_df = pd.DataFrame(bb_results)[["dsn", "bb_device_id", "backup_invalidation", "last_scan", "status", "reason"]]
+                bb_df["dsn"] = bb_df["dsn"].astype(str)
+                ota_none = ota_none.copy()
+                ota_none["dsn"] = ota_none["dsn"].astype(str)
+                ota_none = ota_none.merge(bb_df, on="dsn", how="left")
+                filepath = save_results_to_csv(ota_none, filename=get_report_filename("tig_bb_portal"))
+                print(f"\nReport saved: {filepath}")
+
 
 def load_nexus_token() -> Optional[str]:
     """Load cached Nexus (PlatformScience) token from file."""
