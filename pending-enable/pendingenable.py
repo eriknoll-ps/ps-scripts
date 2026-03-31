@@ -1563,6 +1563,40 @@ def save_nexus_token(token: str) -> None:
         print(f"[WARNING] Could not save Nexus token: {e}")
 
 
+def load_bb_token() -> Optional[str]:
+    """Load cached BB Portal nexus session cookie from file."""
+    try:
+        with open(BB_TOKEN_FILE, "r") as f:
+            token = f.read().strip()
+            if token:
+                return token
+    except Exception:
+        pass
+    return None
+
+
+def save_bb_token(token: str) -> None:
+    """Save BB Portal nexus session cookie to file."""
+    try:
+        with open(BB_TOKEN_FILE, "w") as f:
+            f.write(token.strip())
+    except Exception as e:
+        print(f"[WARNING] Could not save BB token: {e}")
+
+
+def _prompt_bb_token() -> Optional[str]:
+    """Prompt the user to paste a BB Portal nexus session cookie."""
+    print("\n  BB Portal token required.")
+    print("  Get token from: Browser DevTools (F12) > Network tab")
+    print("  Find a request to: paccar.jarvis.blackberry.com")
+    print("  Copy the 'nexus' cookie value from the Cookie request header")
+    token = input("\n  Paste BB Portal nexus cookie (or press Enter to skip): ").strip()
+    if token:
+        save_bb_token(token)
+        return token
+    return None
+
+
 def set_nexus_ota_desired(dsn: str, nexus_token: str, enabled: bool, max_retries: int = 5) -> tuple:
     """
     Set otaApp.otaEnabled for a Nexus device via PlatformScience cf-gateway API.
