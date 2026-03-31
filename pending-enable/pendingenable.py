@@ -1555,7 +1555,7 @@ def _analyze_tig_units(df: pd.DataFrame) -> None:
                 bb_token = _prompt_bb_token()
 
             if bb_token:
-                dsns = ota_none["dsn"].dropna().astype(str).str.strip().tolist()
+                dsns = ota_none["dsn"].dropna().astype(str).str.strip().unique().tolist()
                 print(f"\nFetching BB Portal data for {len(dsns):,} devices...")
                 bb_results = []
                 with ThreadPoolExecutor(max_workers=BB_MAX_WORKERS) as executor:
@@ -1577,11 +1577,13 @@ def _analyze_tig_units(df: pd.DataFrame) -> None:
                                              for r in auth_failures}
                             for future in tqdm(as_completed(retry_futures), total=len(auth_failures), desc="Retrying BB Portal", unit="device"):
                                 bb_results.append(future.result())
+                    else:
+                        print(f"[WARNING] {len(auth_failures):,} device(s) skipped — no new token provided.")
 
                 succeeded = sum(1 for r in bb_results if r["status"] == "Success")
                 not_found = sum(1 for r in bb_results if r["status"] == "No device found")
                 failed = sum(1 for r in bb_results if r["status"] == "Failed")
-                with_invalidation = sum(1 for r in bb_results if r.get("backup_invalidation"))
+                with_invalidation = sum(1 for r in bb_results if r["status"] == "Success" and r.get("backup_invalidation"))
                 print(f"\nBB Portal Summary:")
                 print(f"  Succeeded:                   {succeeded:,}")
                 print(f"  No device found:             {not_found:,}")
