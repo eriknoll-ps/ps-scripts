@@ -819,7 +819,13 @@ def main():
         print("="*70)
         print(f"File ready for subsequent processing steps.")
 
-    # --- Branches 1-3: all operate on pending_df (data after step 3) ---
+    # Normalize DSN column to plain integer strings (prevents "20025982.0" from float-read CSVs)
+    if "dsn" in pending_df.columns:
+        pending_df["dsn"] = pending_df["dsn"].dropna().apply(
+            lambda x: str(int(float(str(x).strip()))) if str(x).strip() not in ("", "nan") else x
+        ).reindex(pending_df.index)
+
+    # --- Branches 1-5: all operate on pending_df (data after step 3) ---
 
     # Branch 1: PMG units
     print("\n" + "="*70)
@@ -1952,7 +1958,7 @@ def _analyze_tig_units(df: pd.DataFrame) -> None:
             return
         save_paccar_token(token)
 
-    dsns = result["dsn"].dropna().apply(lambda x: str(int(float(str(x).strip())))).unique().tolist()
+    dsns = result["dsn"].dropna().astype(str).str.strip().unique().tolist()
     try:
         shadow_results = retrieve_ota_shadow_data(dsns, token)
     except PACCARAuthenticationError:
@@ -2215,7 +2221,7 @@ def _analyze_tig_units(df: pd.DataFrame) -> None:
                 bb_token = _prompt_bb_token()
 
             if bb_token:
-                dsns = ota_true["dsn"].dropna().apply(lambda x: str(int(float(str(x).strip())))).unique().tolist()
+                dsns = ota_true["dsn"].dropna().astype(str).str.strip().unique().tolist()
                 print(f"\nFetching BB Portal data for {len(dsns):,} devices...")
                 bb_results = []
                 with ThreadPoolExecutor(max_workers=BB_MAX_WORKERS) as executor:
@@ -2648,7 +2654,7 @@ def _analyze_tig_azure_units(df: pd.DataFrame) -> None:
             print("[WARNING] No Nexus token available. Skipping shadow retrieval.")
             return
 
-    dsns = result["dsn"].dropna().apply(lambda x: str(int(float(str(x).strip())))).unique().tolist()
+    dsns = result["dsn"].dropna().astype(str).str.strip().unique().tolist()
     try:
         shadow_results = retrieve_azure_shadow_data(dsns, nexus_token)
     except ValueError as e:
@@ -2913,7 +2919,7 @@ def _analyze_tig_azure_units(df: pd.DataFrame) -> None:
                 bb_token = _prompt_bb_token()
 
             if bb_token:
-                dsns = ota_true["dsn"].dropna().apply(lambda x: str(int(float(str(x).strip())))).unique().tolist()
+                dsns = ota_true["dsn"].dropna().astype(str).str.strip().unique().tolist()
                 print(f"\nFetching BB Portal data for {len(dsns):,} devices...")
                 bb_results = []
                 with ThreadPoolExecutor(max_workers=BB_MAX_WORKERS) as executor:
@@ -3492,7 +3498,7 @@ def _analyze_tig_nexus_units(df: pd.DataFrame) -> None:
             return
         save_paccar_token(token)
 
-    dsns = result["dsn"].dropna().apply(lambda x: str(int(float(str(x).strip())))).unique().tolist()
+    dsns = result["dsn"].dropna().astype(str).str.strip().unique().tolist()
     try:
         shadow_results = retrieve_ota_shadow_data(dsns, token)
     except PACCARAuthenticationError:
@@ -3714,7 +3720,7 @@ def _analyze_tig_nexus_units(df: pd.DataFrame) -> None:
                 bb_token = _prompt_bb_token()
 
             if bb_token:
-                dsns = ota_true["dsn"].dropna().apply(lambda x: str(int(float(str(x).strip())))).unique().tolist()
+                dsns = ota_true["dsn"].dropna().astype(str).str.strip().unique().tolist()
                 print(f"\nFetching BB Portal data for {len(dsns):,} devices...")
                 bb_results = []
                 with ThreadPoolExecutor(max_workers=BB_MAX_WORKERS) as executor:
@@ -3908,7 +3914,7 @@ def _trigger_enablement_flow(pending_df: pd.DataFrame) -> None:
 
     enable_results = []
     for row in candidates:
-        dsn = str(int(float(str(row["dsn"]).strip())))
+        dsn = str(row["dsn"]).strip()
         vin = str(row.get("vin", "unknown"))
         try:
             success, reason = activate_pending_enable(vin, dsn, paccar_token)
