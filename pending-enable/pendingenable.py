@@ -3905,21 +3905,11 @@ def _trigger_enablement_flow(pending_df: pd.DataFrame) -> None:
     for row in candidates:
         dsn = str(row["dsn"]).strip()
         vin = str(row.get("vin", "unknown"))
-        print(f"\nDSN {dsn} / VIN {vin}")
-        answer = input("  Enable? (y/n/q to quit): ").strip().lower()
-        if answer == "q":
-            print("Stopping enablement loop.")
-            break
-        if answer != "y":
-            enable_results.append({"dsn": dsn, "vin": vin, "result": "Skipped"})
-            continue
-
         try:
             success, reason = activate_pending_enable(vin, dsn, paccar_token)
         except PACCARAuthenticationError:
-            print(f"  Result: Failed - PACCAR token expired.")
-            print("\n  [WARNING] PACCAR token expired.")
-            new_paccar = input("  Enter new PACCAR API bearer token (or press Enter to skip): ").strip()
+            print(f"\n  [WARNING] PACCAR token expired on DSN {dsn}.")
+            new_paccar = input("  Enter new PACCAR API bearer token (or press Enter to stop): ").strip()
             if new_paccar:
                 save_paccar_token(new_paccar)
                 paccar_token = new_paccar
@@ -3935,7 +3925,7 @@ def _trigger_enablement_flow(pending_df: pd.DataFrame) -> None:
                 break
 
         result_str = "Success" if success else f"Failed: {reason}"
-        print(f"  Result: {result_str}")
+        print(f"  DSN {dsn} / VIN {vin}: {result_str}")
         enable_results.append({"dsn": dsn, "vin": vin, "result": result_str})
 
     if not enable_results:
