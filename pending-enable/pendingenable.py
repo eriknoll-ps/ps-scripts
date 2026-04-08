@@ -851,6 +851,12 @@ def main():
     if run_tig_other == "y":
         _analyze_tig_other_units(pending_df)
 
+    # Final step: Trigger Enablement Flow Again
+    print("\n" + "="*70)
+    run_enable_flow = input("Trigger Enablement Flow Again? (y/n): ").strip().lower()
+    if run_enable_flow == "y":
+        _trigger_enablement_flow(pending_df)
+
 
 def load_trimble_token() -> Optional[str]:
     """Load cached Trimble API token from file."""
@@ -1071,23 +1077,24 @@ def _reset_single_device(dsn: str, app_device_id: str, trimble_token: str) -> di
 
 def _load_tdmg_reset_history() -> pd.DataFrame:
     """Load TDMG reset/remediation history from CSV, returning an empty DataFrame if not found."""
-    _COLS = ["dsn", "vin", "reset_count", "last_reset", "remediation_count", "last_remediation"]
+    _COLS = ["dsn", "vin", "reset_count", "last_reset", "remediation_count", "last_remediation", "enable_count", "last_enable"]
     try:
         df = pd.read_csv(TDMG_RESET_HISTORY_FILE, dtype={"dsn": str})
-        # Add missing columns for files created before remediation tracking was added
         for col in _COLS:
             if col not in df.columns:
                 df[col] = None
         df["last_reset"] = pd.to_datetime(df["last_reset"], utc=True, errors="coerce")
         df["last_remediation"] = pd.to_datetime(df["last_remediation"], utc=True, errors="coerce")
+        df["last_enable"] = pd.to_datetime(df["last_enable"], utc=True, errors="coerce")
         df["reset_count"] = pd.to_numeric(df["reset_count"], errors="coerce").fillna(0).astype(int)
         df["remediation_count"] = pd.to_numeric(df["remediation_count"], errors="coerce").fillna(0).astype(int)
+        df["enable_count"] = pd.to_numeric(df["enable_count"], errors="coerce").fillna(0).astype(int)
         return df
     except FileNotFoundError:
-        return pd.DataFrame(columns=["dsn", "reset_count", "last_reset", "remediation_count", "last_remediation"])
+        return pd.DataFrame(columns=_COLS)
     except Exception as e:
         print(f"[WARNING] Could not load reset history: {e}. Starting fresh.")
-        return pd.DataFrame(columns=["dsn", "reset_count", "last_reset", "remediation_count", "last_remediation"])
+        return pd.DataFrame(columns=_COLS)
 
 
 def _save_tdmg_reset_history(history_df: pd.DataFrame) -> None:
@@ -1099,6 +1106,8 @@ def _save_tdmg_reset_history(history_df: pd.DataFrame) -> None:
             out["last_reset"] = pd.to_datetime(out["last_reset"], utc=True, errors="coerce").dt.strftime("%Y-%m-%dT%H:%M:%SZ")
         if "last_remediation" in out.columns:
             out["last_remediation"] = pd.to_datetime(out["last_remediation"], utc=True, errors="coerce").dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if "last_enable" in out.columns:
+            out["last_enable"] = pd.to_datetime(out["last_enable"], utc=True, errors="coerce").dt.strftime("%Y-%m-%dT%H:%M:%SZ")
         out.to_csv(TDMG_RESET_HISTORY_FILE, index=False)
     except Exception as e:
         print(f"[WARNING] Could not save reset history: {e}")
@@ -1106,7 +1115,7 @@ def _save_tdmg_reset_history(history_df: pd.DataFrame) -> None:
 
 def _load_azure_history() -> pd.DataFrame:
     """Load Azure reboot/remediation history from CSV, returning an empty DataFrame if not found."""
-    _COLS = ["dsn", "vin", "reboot_count", "last_reboot", "remediation_count", "last_remediation"]
+    _COLS = ["dsn", "vin", "reboot_count", "last_reboot", "remediation_count", "last_remediation", "enable_count", "last_enable"]
     try:
         df = pd.read_csv(AZURE_HISTORY_FILE, dtype={"dsn": str})
         for col in _COLS:
@@ -1114,8 +1123,10 @@ def _load_azure_history() -> pd.DataFrame:
                 df[col] = None
         df["last_reboot"] = pd.to_datetime(df["last_reboot"], utc=True, errors="coerce")
         df["last_remediation"] = pd.to_datetime(df["last_remediation"], utc=True, errors="coerce")
+        df["last_enable"] = pd.to_datetime(df["last_enable"], utc=True, errors="coerce")
         df["reboot_count"] = pd.to_numeric(df["reboot_count"], errors="coerce").fillna(0).astype(int)
         df["remediation_count"] = pd.to_numeric(df["remediation_count"], errors="coerce").fillna(0).astype(int)
+        df["enable_count"] = pd.to_numeric(df["enable_count"], errors="coerce").fillna(0).astype(int)
         return df
     except FileNotFoundError:
         return pd.DataFrame(columns=_COLS)
@@ -1133,6 +1144,8 @@ def _save_azure_history(history_df: pd.DataFrame) -> None:
             out["last_reboot"] = pd.to_datetime(out["last_reboot"], utc=True, errors="coerce").dt.strftime("%Y-%m-%dT%H:%M:%SZ")
         if "last_remediation" in out.columns:
             out["last_remediation"] = pd.to_datetime(out["last_remediation"], utc=True, errors="coerce").dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if "last_enable" in out.columns:
+            out["last_enable"] = pd.to_datetime(out["last_enable"], utc=True, errors="coerce").dt.strftime("%Y-%m-%dT%H:%M:%SZ")
         out.to_csv(AZURE_HISTORY_FILE, index=False)
     except Exception as e:
         print(f"[WARNING] Could not save Azure history: {e}")
@@ -3782,6 +3795,212 @@ def _analyze_tig_other_units(df: pd.DataFrame) -> None:
         available_cols = [c for c in display_cols if c in result.columns]
         print(f"\nUnit details:")
         print(result[available_cols].to_string(index=False))
+
+
+def _trigger_enablement_flow(pending_df: pd.DataFrame) -> None:
+    """
+    Final step: for devices that appear in pending_df AND either TDMG or Azure history,
+    filter by a configurable cooldown since last enable, then call activate_pending_enable
+    for each eligible device.
+    """
+    import datetime as _dt
+
+    print("="*70)
+    print("Final Step: Trigger Enablement Flow Again")
+    print("="*70)
+
+    if "dsn" not in pending_df.columns or "vin" not in pending_df.columns:
+        print("[WARNING] pending_df missing 'dsn' or 'vin' column. Cannot run enablement flow.")
+        return
+
+    # Load both history files
+    tdmg_history = _load_tdmg_reset_history()
+    azure_history = _load_azure_history()
+
+    # Tag source so we know which file to update
+    tdmg_dsns = set(tdmg_history["dsn"].astype(str).str.strip()) if not tdmg_history.empty else set()
+    azure_dsns = set(azure_history["dsn"].astype(str).str.strip()) if not azure_history.empty else set()
+    known_dsns = tdmg_dsns | azure_dsns
+
+    if not known_dsns:
+        print("No history records found in either TDMG or Azure history files. Nothing to do.")
+        return
+
+    # Find pending devices that have a history record
+    pending_df = pending_df.copy()
+    pending_df["_dsn_str"] = pending_df["dsn"].astype(str).str.strip()
+    eligible = pending_df[pending_df["_dsn_str"].isin(known_dsns)].copy()
+    eligible = eligible.drop(columns=["_dsn_str"])
+
+    print(f"Devices in pending list with a history record: {len(eligible):,} "
+          f"(TDMG: {sum(pending_df['dsn'].astype(str).str.strip().isin(tdmg_dsns)):,}, "
+          f"Azure: {sum(pending_df['dsn'].astype(str).str.strip().isin(azure_dsns)):,})")
+
+    if eligible.empty:
+        print("No matching devices found. Nothing to do.")
+        return
+
+    # Cooldown filter
+    DEFAULT_COOLDOWN = 24
+    cooldown_input = input(f"\nExclude devices enabled within the past how many hours? (default {DEFAULT_COOLDOWN}): ").strip()
+    try:
+        cooldown_hours = int(cooldown_input) if cooldown_input else DEFAULT_COOLDOWN
+    except ValueError:
+        print(f"  Invalid input. Using default {DEFAULT_COOLDOWN}h.")
+        cooldown_hours = DEFAULT_COOLDOWN
+
+    now_utc = _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0)
+    cutoff = now_utc - _dt.timedelta(hours=cooldown_hours)
+
+    # Build a combined last_enable lookup from both history files
+    last_enable_map = {}
+    for _, row in tdmg_history.iterrows():
+        d = str(row["dsn"]).strip()
+        if pd.notna(row["last_enable"]):
+            last_enable_map[d] = row["last_enable"]
+    for _, row in azure_history.iterrows():
+        d = str(row["dsn"]).strip()
+        if pd.notna(row["last_enable"]):
+            # Take the more recent timestamp if present in both
+            existing = last_enable_map.get(d)
+            if existing is None or row["last_enable"] > existing:
+                last_enable_map[d] = row["last_enable"]
+
+    skipped = []
+    candidates = []
+    for _, row in eligible.iterrows():
+        d = str(row["dsn"]).strip()
+        last_enable = last_enable_map.get(d)
+        if last_enable is not None and last_enable >= cutoff:
+            skipped.append((d, str(row.get("vin", "unknown")), last_enable))
+        else:
+            candidates.append(row)
+
+    if skipped:
+        print(f"\nExcluding {len(skipped):,} device(s) enabled within the past {cooldown_hours}h:")
+        for d, vin, ts in skipped:
+            print(f"  DSN {d} / VIN {vin} — last enabled: {ts.strftime('%Y-%m-%d %H:%M UTC')}")
+
+    if not candidates:
+        print(f"\nAll devices were enabled within the past {cooldown_hours}h. Nothing to do.")
+        return
+
+    print(f"\nDevices eligible for enablement: {len(candidates):,}")
+    do_enable = input("Trigger enablement for these devices? (y/n): ").strip().lower()
+    if do_enable != "y":
+        print("Skipping enablement.")
+        return
+
+    paccar_token = load_paccar_token()
+    if paccar_token:
+        print("Using cached PACCAR token...")
+    else:
+        paccar_token = input("Enter PACCAR API bearer token (or press Enter to skip): ").strip()
+        if not paccar_token:
+            print("[WARNING] No PACCAR token. Skipping enablement.")
+            return
+        save_paccar_token(paccar_token)
+
+    enable_results = []
+    for row in candidates:
+        dsn = str(row["dsn"]).strip()
+        vin = str(row.get("vin", "unknown"))
+        print(f"\nDSN {dsn} / VIN {vin}")
+        answer = input("  Enable? (y/n/q to quit): ").strip().lower()
+        if answer == "q":
+            print("Stopping enablement loop.")
+            break
+        if answer != "y":
+            enable_results.append({"dsn": dsn, "vin": vin, "result": "Skipped"})
+            continue
+
+        try:
+            success, reason = activate_pending_enable(vin, dsn, paccar_token)
+        except PACCARAuthenticationError:
+            print(f"  Result: Failed - PACCAR token expired.")
+            print("\n  [WARNING] PACCAR token expired.")
+            new_paccar = input("  Enter new PACCAR API bearer token (or press Enter to skip): ").strip()
+            if new_paccar:
+                save_paccar_token(new_paccar)
+                paccar_token = new_paccar
+                try:
+                    success, reason = activate_pending_enable(vin, dsn, paccar_token)
+                except PACCARAuthenticationError:
+                    enable_results.append({"dsn": dsn, "vin": vin, "result": "Failed - PACCAR token expired after retry"})
+                    print("  Stopping enablement loop.")
+                    break
+            else:
+                print("  No token provided. Stopping enablement loop.")
+                enable_results.append({"dsn": dsn, "vin": vin, "result": "Failed - PACCAR token expired"})
+                break
+
+        result_str = "Success" if success else f"Failed: {reason}"
+        print(f"  Result: {result_str}")
+        enable_results.append({"dsn": dsn, "vin": vin, "result": result_str})
+
+    if not enable_results:
+        return
+
+    # Summary
+    attempted = [r for r in enable_results if r["result"] != "Skipped"]
+    succeeded_results = [r for r in attempted if r["result"] == "Success"]
+    print(f"\nEnablement complete: {len(succeeded_results):,}/{len(attempted):,} succeeded")
+
+    # Save report
+    report_df = pd.DataFrame(enable_results)
+    filepath = save_results_to_csv(report_df, filename=get_report_filename("enablement_flow"))
+    print(f"Report saved: {filepath}")
+
+    # Update enable history in whichever file each DSN belongs to
+    succeeded_dsns = [r["dsn"] for r in succeeded_results]
+    if not succeeded_dsns:
+        return
+
+    # Reload both files fresh before updating
+    tdmg_history = _load_tdmg_reset_history()
+    azure_history = _load_azure_history()
+    tdmg_dsns = set(tdmg_history["dsn"].astype(str).str.strip()) if not tdmg_history.empty else set()
+    azure_dsns = set(azure_history["dsn"].astype(str).str.strip()) if not azure_history.empty else set()
+
+    vin_map = {r["dsn"]: r["vin"] for r in enable_results}
+    tdmg_updated = False
+    azure_updated = False
+
+    for dsn in succeeded_dsns:
+        vin = vin_map.get(dsn, "")
+
+        if dsn in tdmg_dsns:
+            mask = tdmg_history["dsn"] == dsn
+            tdmg_history.loc[mask, "enable_count"] = tdmg_history.loc[mask, "enable_count"].fillna(0).astype(int) + 1
+            tdmg_history.loc[mask, "last_enable"] = now_utc
+            if vin and (pd.isna(tdmg_history.loc[mask, "vin"]).all() or (tdmg_history.loc[mask, "vin"] == "").all()):
+                tdmg_history.loc[mask, "vin"] = vin
+            tdmg_updated = True
+
+        if dsn in azure_dsns:
+            mask = azure_history["dsn"] == dsn
+            azure_history.loc[mask, "enable_count"] = azure_history.loc[mask, "enable_count"].fillna(0).astype(int) + 1
+            azure_history.loc[mask, "last_enable"] = now_utc
+            if vin and (pd.isna(azure_history.loc[mask, "vin"]).all() or (azure_history.loc[mask, "vin"] == "").all()):
+                azure_history.loc[mask, "vin"] = vin
+            azure_updated = True
+
+        # DSN not yet in either file — add to TDMG as a new row (fallback)
+        if dsn not in tdmg_dsns and dsn not in azure_dsns:
+            tdmg_history = pd.concat([tdmg_history, pd.DataFrame([{
+                "dsn": dsn, "vin": vin,
+                "reset_count": 0, "last_reset": None,
+                "remediation_count": 0, "last_remediation": None,
+                "enable_count": 1, "last_enable": now_utc,
+            }])], ignore_index=True)
+            tdmg_updated = True
+
+    if tdmg_updated:
+        _save_tdmg_reset_history(tdmg_history)
+        print(f"TDMG history updated → {TDMG_RESET_HISTORY_FILE}")
+    if azure_updated:
+        _save_azure_history(azure_history)
+        print(f"Azure history updated → {AZURE_HISTORY_FILE}")
 
 
 if __name__ == "__main__":
