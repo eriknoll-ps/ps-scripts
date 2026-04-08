@@ -3908,7 +3908,7 @@ def _trigger_enablement_flow(pending_df: pd.DataFrame) -> None:
 
     enable_results = []
     for row in candidates:
-        dsn = str(row["dsn"]).strip()
+        dsn = str(int(float(str(row["dsn"]).strip())))
         vin = str(row.get("vin", "unknown"))
         try:
             success, reason = activate_pending_enable(vin, dsn, paccar_token)
