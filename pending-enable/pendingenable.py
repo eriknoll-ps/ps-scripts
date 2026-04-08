@@ -3817,9 +3817,13 @@ def _trigger_enablement_flow(pending_df: pd.DataFrame) -> None:
     tdmg_history = _load_tdmg_reset_history()
     azure_history = _load_azure_history()
 
+    def _norm_dsn(s):
+        """Normalize a DSN series to plain integer strings (strips .0 from float-read values)."""
+        return pd.to_numeric(s, errors="coerce").dropna().astype("int64").astype(str)
+
     # Tag source so we know which file to update
-    tdmg_dsns = set(tdmg_history["dsn"].astype(str).str.strip()) if not tdmg_history.empty else set()
-    azure_dsns = set(azure_history["dsn"].astype(str).str.strip()) if not azure_history.empty else set()
+    tdmg_dsns = set(_norm_dsn(tdmg_history["dsn"])) if not tdmg_history.empty else set()
+    azure_dsns = set(_norm_dsn(azure_history["dsn"])) if not azure_history.empty else set()
     known_dsns = tdmg_dsns | azure_dsns
 
     if not known_dsns:
@@ -3828,13 +3832,14 @@ def _trigger_enablement_flow(pending_df: pd.DataFrame) -> None:
 
     # Find pending devices that have a history record
     pending_df = pending_df.copy()
-    pending_df["_dsn_str"] = pending_df["dsn"].astype(str).str.strip()
+    pending_df["_dsn_str"] = pd.to_numeric(pending_df["dsn"], errors="coerce").astype("Int64").astype(str).str.replace("<NA>", "", regex=False).str.strip()
     eligible = pending_df[pending_df["_dsn_str"].isin(known_dsns)].copy()
     eligible = eligible.drop(columns=["_dsn_str"])
 
+    pending_dsn_norm = pd.to_numeric(pending_df["dsn"], errors="coerce").astype("Int64").astype(str).str.replace("<NA>", "", regex=False).str.strip()
     print(f"Devices in pending list with a history record: {len(eligible):,} "
-          f"(TDMG: {sum(pending_df['dsn'].astype(str).str.strip().isin(tdmg_dsns)):,}, "
-          f"Azure: {sum(pending_df['dsn'].astype(str).str.strip().isin(azure_dsns)):,})")
+          f"(TDMG: {pending_dsn_norm.isin(tdmg_dsns).sum():,}, "
+          f"Azure: {pending_dsn_norm.isin(azure_dsns).sum():,})")
 
     if eligible.empty:
         print("No matching devices found. Nothing to do.")
