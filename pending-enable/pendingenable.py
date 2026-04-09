@@ -2014,12 +2014,12 @@ def _analyze_tig_units(df: pd.DataFrame) -> None:
     print("\nSample (up to 10):")
     print(result[["vin", "dsn", "ota_reported", "ota_desired"]].head(10).to_string(index=False))
 
-    # Filter to ota_reported == False
+    # Filter to ota_reported == False or None
     print("\n" + "-"*70)
-    filter_false = input("Filter to units where ota_reported = False? (y/n): ").strip().lower()
+    filter_false = input("Filter to units where ota_reported = False or None? (y/n): ").strip().lower()
     if filter_false == "y":
-        ota_false = result[result["ota_reported"] == False]
-        print(f"\nUnits with ota_reported = False: {len(ota_false):,}")
+        ota_false = result[(result["ota_reported"] == False) | result["ota_reported"].isna()]
+        print(f"\nUnits with ota_reported = False or None: {len(ota_false):,}")
         if len(ota_false) > 0:
             print("\nSample (up to 10):")
             print(ota_false[["vin", "dsn", "ota_reported", "ota_desired"]].head(10).to_string(index=False))
@@ -2692,12 +2692,12 @@ def _analyze_tig_azure_units(df: pd.DataFrame) -> None:
     print("\nSample (up to 10):")
     print(result[["vin", "dsn", "ota_reported", "ota_desired"]].head(10).to_string(index=False))
 
-    # Filter to ota_reported == False
+    # Filter to ota_reported == False or None
     print("\n" + "-"*70)
-    filter_false = input("Filter to units where ota_reported = False? (y/n): ").strip().lower()
+    filter_false = input("Filter to units where ota_reported = False or None? (y/n): ").strip().lower()
     if filter_false == "y":
-        ota_false = result[result["ota_reported"] == False]
-        print(f"\nUnits with ota_reported = False: {len(ota_false):,}")
+        ota_false = result[(result["ota_reported"] == False) | result["ota_reported"].isna()]
+        print(f"\nUnits with ota_reported = False or None: {len(ota_false):,}")
         if len(ota_false) > 0:
             print("\nSample (up to 10):")
             print(ota_false[["vin", "dsn", "ota_reported", "ota_desired"]].head(10).to_string(index=False))
@@ -3554,12 +3554,12 @@ def _analyze_tig_nexus_units(df: pd.DataFrame) -> None:
     print("\nSample (up to 10):")
     print(result[["vin", "dsn", "ota_reported", "ota_desired"]].head(10).to_string(index=False))
 
-    # Filter to ota_reported == False
+    # Filter to ota_reported == False or None
     print("\n" + "-"*70)
-    filter_false = input("Filter to units where ota_reported = False? (y/n): ").strip().lower()
+    filter_false = input("Filter to units where ota_reported = False or None? (y/n): ").strip().lower()
     if filter_false == "y":
-        ota_false = result[result["ota_reported"] == False]
-        print(f"\nUnits with ota_reported = False: {len(ota_false):,}")
+        ota_false = result[(result["ota_reported"] == False) | result["ota_reported"].isna()]
+        print(f"\nUnits with ota_reported = False or None: {len(ota_false):,}")
         if len(ota_false) > 0:
             print("\nSample (up to 10):")
             print(ota_false[["vin", "dsn", "ota_reported", "ota_desired"]].head(10).to_string(index=False))
